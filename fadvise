@@ -1,0 +1,420 @@
+#! /usr/bin/perl
+
+#  fadvise - File ADVISE: give file advisory information
+#  Copyright (C) 2007  Dave Plonka
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+# $Id: fadvise,v 1.5 2007/05/23 21:08:22 plonka Exp $
+# Dave Plonka, Apr 19 2007
+
+use Inline C;
+use strict;
+use FindBin;
+use Getopt::Long;
+use Pod::Usage;
+use POSIX; # for sysconf
+
+my %opt;
+
+# { CONFIGURATION SECTION BEGIN ################################################
+
+# option defaults:
+$opt{h} = 0;
+$opt{m} = 0;
+$opt{a} = '\0'; # --normal
+$opt{o} = 0; # --offset=0
+$opt{l} = 0; # --length=0
+$opt{v} = 0; # --noverbose
+
+# } CONFIGURATION SECTION END ##################################################
+
+GetOptions('help'       => \$opt{h},
+	   'man'        => \$opt{m},
+           'advice=s'   => \$opt{a},
+	   'offset=o'   => \$opt{o},
+	   'length=o'   => \$opt{l},
+	   'verbose!'   => \$opt{v},
+	   'sequential' => sub { $opt{a} = 's' },
+	   'random'     => sub { $opt{a} = 'r' },
+	   'willneed'   => sub { $opt{a} = 'w' },
+	   'dontneed'   => sub { $opt{a} = 'd' },
+	   'noreuse'    => sub { $opt{a} = 'n' },
+	   'normal'     => sub { $opt{a} = '\0' }) or pod2usage(2);
+
+pod2usage(0) if ($opt{h});
+pod2usage(-exitstatus => 0, -verbose => 2) if $opt{m};
+
+pod2usage(2)
+if (('\0' ne $opt{a} and
+     ('s' ne $opt{a} and
+      'r' ne $opt{a} and
+      'w' ne $opt{a} and
+      'd' ne $opt{a} and
+      'n' ne $opt{a})) or
+      $opt{o} < 0 or
+      $opt{l} < 0 or
+      0 == @ARGV);
+
+if ($opt{v}) {
+   my $pageSize = POSIX::sysconf(&POSIX::_SC_PAGESIZE);
+   print "page size: $pageSize\n";
+}
+
+foreach my $ARGV (@ARGV) {
+   # FIXME - call fincore before and use Array::Diff after to show changes
+   if (0 != fadvise($ARGV, $opt{o}, $opt{l}, $opt{a})) {
+      exit(1);
+   }
+   if ($opt{v}) {
+      my @values = fincore($ARGV);
+      if (@values) {
+         printf("%s: %u incore pages: @values\n", $ARGV, scalar(@values));
+      } else {
+         print "$ARGV: no incore pages.\n";
+      }
+   }
+}
+
+exit;
+
+################################################################################
+
+__END__
+
+=head1 NAME
+
+fadvise - File ADVISE: give file advisory information
+
+=head1 SYNOPSIS
+
+fadvise [options] file [...]
+
+ Options:
+  -help - brief help message
+  -man - full documentation
+  -sequential
+  -random
+  -willneed
+  -dontneed
+  -noreuse
+  -normal (default)
+  -offset=n
+  -length=n
+  -verbose
+  -noverbose
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+Shows usage information and exits.
+
+=item B<-man>
+
+Shows the manual page and exits.
+
+=item B<-offset=n>
+
+Specifies offset for fadvise.
+Defaults to zero if unspecified.
+
+=item B<-length=n>
+
+Specifies length for fadvise.
+Defaults to zero if unspecified, i.e. the whole file if offset is also zero.
+
+=item B<-verbose>
+
+Shows incore page info after fadvise.
+
+=item B<-noverbose>
+
+Doesn't show incore page info after fadvise.
+This is the default.
+
+=item B<-sequential>
+
+Announces the expectation to access the file sequentially.
+
+=item B<-random>
+
+Announces the expectation to access the file randomly.
+
+=item B<-willneed>
+
+Announces the expectation that file content will be needed in the
+near future.
+
+=item B<-dontneed>
+
+Announces the expectation that file content won't be needed in the
+near future.
+
+Under Linux 2.6.9, this is known to cause the file content to be
+evicted from the buffer-cache immediately.
+
+Note that this option first causes an fsync of the file.
+
+=item B<-noreuse>
+
+Announces the expectation that file content won't be reused in the
+near future.
+
+=item B<-normal>
+
+Announces the expectation to access the file normally.
+This is the default.
+
+=back
+
+=head1 DESCRIPTION
+
+B<fadvise> is a command used to give file advisory information to the
+operating system.
+
+Its "don't need" option (fadvise --dontneed) is particularly useful
+to cause the files' pages (blocks) to be evicted from the buffer-cache.
+
+=head1 EXAMPLE
+
+ $ fadvise --verbose --dontneed foo.rrd
+ page size: 4096
+ foo.rrd: no incore pages.
+
+=head1 BUGS
+
+B<-dontneed> might be the only really useful option.
+
+In verbose mode, you may get an error from mincore such as "cannot
+allocate memory" if the file size is zero.
+
+Some operating systems have posix_fadvise, but it doesn't work.
+For instance under Linux 2.4, you may see this error:
+
+ posix_fadvise: Inappropriate ioctl for device
+
+=head1 AUTHOR
+
+Dave Plonka <plonka@cs.wisc.edu>
+
+Copyright (C) 2007  Dave Plonka.
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+=head1 VERSION
+
+This is fadvise B<$Revision: 1.5 $>.
+
+=head1 SEE ALSO
+
+The B<fincore> command.
+
+=cut
+
+__C__
+#define PERL_INLINE /* undef this to build the C code stand-alone */
+
+#define _POSIX_C_SOURCE 200112L /* for posix_fadvise */
+
+/* { POSIX.1 stuff */
+#include <errno.h> /* errno */
+#include <fcntl.h> /* fcntl, open */
+#include <stdio.h> /* perror, fprintf, stderr, printf */
+#include <stdlib.h> /* exit, calloc, free */
+#include <string.h> /* strerror */
+#include <sys/stat.h> /* stat, fstat */
+#include <sys/types.h> /* size_t */
+#include <unistd.h> /* sysconf, close */
+/* } */
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+
+/* fincore -
+ */
+void
+fincore(char *filename) {
+   int fd;
+   struct stat st;
+   void *pa = (char *)0;
+   char *vec = (char *)0;
+   register size_t n = 0;
+   size_t pageSize = getpagesize();
+   register size_t pageIndex;
+#  ifdef PERL_INLINE
+   INLINE_STACK_VARS;
+#  endif
+
+#  ifdef PERL_INLINE
+   INLINE_STACK_RESET;
+#  endif
+
+   fd = open(filename, 0);
+   if (0 > fd) {
+      perror("open");
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   if (0 != fstat(fd, &st)) {
+      perror("fstat");
+      close(fd);
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   pa = mmap((void *)0, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
+   if (MAP_FAILED == pa) {
+      perror("mmap");
+      close(fd);
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   /* vec = calloc(1, 1+st.st_size/pageSize); */
+   vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
+   if ((void *)0 == vec) {
+      perror("calloc");
+      close(fd);
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   if (0 != mincore(pa, st.st_size, vec)) {
+      /* perror("mincore"); */
+      fprintf(stderr, "mincore(%p, %lu, %p): %s\n",
+              pa, (unsigned long)st.st_size, vec, strerror(errno));
+      free(vec);
+      close(fd);
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   /* handle the results */
+   for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
+      if (vec[pageIndex]&1) {
+#        ifndef PERL_INLINE /* { */
+         printf("%lu\n", (unsigned long)pageIndex);
+#        else /* }{ */
+         /* return the results on perl's stack */
+         INLINE_STACK_PUSH(sv_2mortal(newSVnv(pageIndex)));
+         n++;
+#        endif /* } */
+      }
+   }
+
+   free(vec);
+   vec = (char *)0;
+
+   munmap(pa, st.st_size);
+   close(fd);
+
+#  ifdef PERL_INLINE
+   INLINE_STACK_DONE;
+#  endif
+
+#  ifdef PERL_INLINE
+   INLINE_STACK_RETURN(n);
+#  endif
+   return;
+}
+
+/* fadvise -
+ */
+void
+fadvise(char *filename, size_t offset, size_t len, char adviceChar) {
+   int fd;
+   int advice;
+   int retval;
+#  ifdef PERL_INLINE
+   INLINE_STACK_VARS;
+#  endif
+
+#  ifdef PERL_INLINE
+   INLINE_STACK_RESET;
+#  endif
+
+   fd = open(filename, 0);
+   if (0 > fd) {
+      perror("open");
+#     ifdef PERL_INLINE
+      INLINE_STACK_VOID;
+#     endif
+      return;
+   }
+
+   switch (adviceChar) {
+   case 's':
+      advice = POSIX_FADV_SEQUENTIAL;
+      break;
+   case 'r':
+      advice = POSIX_FADV_RANDOM;
+      break;
+   case 'w':
+      advice = POSIX_FADV_WILLNEED;
+      break;
+   case 'd':
+      advice = POSIX_FADV_DONTNEED;
+      fsync(fd); /* on Linux 2.6.9 you can only invalidate_mapping_pages if
+                  * those pages aren't dirty, so sync this file to disk first.
+                  * (This makes it likely that the advice will be followed,
+                  *  and that those pages will actually be flushed from cache.)
+                  */
+      break;
+   case 'n':
+      advice = POSIX_FADV_NOREUSE;
+      break;
+   case '\0':
+   default:
+      advice = POSIX_FADV_NORMAL;
+   }
+
+   retval = posix_fadvise(fd, offset, len, advice);
+
+   if (0 != retval) {
+      perror("posix_fadvise");
+   }
+
+   close(fd);
+
+#  ifdef PERL_INLINE
+   INLINE_STACK_DONE;
+#  endif
+
+#  ifdef PERL_INLINE
+   /* return the return value on perl's stack */
+   INLINE_STACK_PUSH(sv_2mortal(newSVnv(retval)));
+   INLINE_STACK_RETURN(1);
+#  endif
+   return;
+}
