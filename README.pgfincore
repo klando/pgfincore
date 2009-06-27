@@ -1,0 +1,9 @@
+v0.1
+
+make clean && make && sudo make install
+
+Create the functions from the sql script (it should be in your contrib directory)
+
+select relname,block_mem,size,(block_mem*4*1024*100/size)||' %'  as ratio_memory from (select relname, pgfincore_name(relname) as block_mem, pg_relation_size(relname) as size from pg_stat_user_tables ) s;
+
+Enjoy ;)
