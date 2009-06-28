@@ -1,0 +1,11 @@
+pgfincore is written by:
+
+ * Cédric Villemain <cedric.villemain@dalibo.com>
+
+I take pg_relation_size code as a model, I look at the C interesting part from fincore (http://net.doit.wisc.edu/~plonka/fincore/), and I follow the great idea from http://www.kennygorman.com/wordpress/?p=246.
+
+In short, thank you Kenny Gorman, thank you Dave Plonka !
+
+Thanks to Dalibo : http://www.dalibo.com/ | http://www.dalibo.org/ 
+
+

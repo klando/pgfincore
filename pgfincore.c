@@ -1,11 +1,8 @@
-/* This project let you see what objects are in the FS cache memory
-*  Copyright (C) 2009 Cédric Villemain Dalibo
-*  
-*/
 /*
-#  fincore - File IN CORE: show which blocks of a file are in core
-#  Copyright (C) 2007  Dave Plonka
-#
+*  PgFincore
+*  This project let you see what objects are in the FS cache memory
+*  Copyright (C) 2009 Cédric Villemain Dalibo
+*
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 2 of the License, or
@@ -19,48 +16,31 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
-# $Id: fincore,v 1.9 2007/05/23 21:17:52 plonka Exp $
-# Dave Plonka, Apr  5 2007
+*
+*
 */
 
 /* { POSIX stuff */
 #include <errno.h> /* errno */
 #include <fcntl.h> /* fcntl, open */
-#include <stdio.h> /* perror, fprintf, stderr, printf */
 #include <stdlib.h> /* exit, calloc, free */
-#include <string.h> /* strerror */
 #include <sys/stat.h> /* stat, fstat */
 #include <sys/types.h> /* size_t */
 #include <unistd.h> /* sysconf, close */
+#include <sys/mman.h> /* mmap, mincore */
 /* } */
 
+/* { PostgreSQL stuff */
 #include "postgres.h" /* general Postgres declarations */
-
-#include "mb/pg_wchar.h"
-#include "utils/elog.h"
-#include "utils/builtins.h"
-
-#include <sys/mman.h>
-
-#include "access/heapam.h"
-#include "catalog/catalog.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_tablespace.h"
-#include "commands/dbcommands.h"
-#include "commands/tablespace.h"
-#include "miscadmin.h"
-#include "storage/fd.h"
-#include "utils/acl.h"
-#include "utils/syscache.h"
-#include "utils/relcache.h"
-#include "utils/rel.h"
-// #include "pg_config_manual.h"
+#include "access/heapam.h" /* relation_open */
+#include "catalog/catalog.h" /* relpath */
+#include "catalog/namespace.h" /* makeRangeVarFromNameList */
+#include "utils/builtins.h" /* textToQualifiedNameList */
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
-
+/* } */
 
 
 Datum pgfincore_name(PG_FUNCTION_ARGS); /* Prototype */
@@ -72,10 +52,9 @@ PG_FUNCTION_INFO_V1(pgfincore_name);
 PG_FUNCTION_INFO_V1(pgfincore_oid);
 
 
-
 /* fincore -
  */
-Datum
+Datum 
 pgfincore_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relOid = PG_GETARG_OID(0);
@@ -90,6 +69,7 @@ pgfincore_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT64(size);
 }
+
 Datum pgfincore_name(PG_FUNCTION_ARGS) {
 	text	   *relname = PG_GETARG_TEXT_P(0);
 	RangeVar   *relrv;
@@ -100,11 +80,10 @@ Datum pgfincore_name(PG_FUNCTION_ARGS) {
 	rel = relation_openrv(relrv, AccessShareLock);
 
 	size = pgfincore_all(&(rel->rd_node));
-	elog(DEBUG1, "pgfincore3 : %lu",(unsigned long)size);
 
 	relation_close(rel, AccessShareLock);
 
-	return size;
+	PG_RETURN_INT64(size);
 }
 
 // calculate number of block in memory
@@ -129,24 +108,24 @@ pgfincore_all(RelFileNode *rfn)
 					 relationpath, segcount);
 
 		result = pgfincore(pathname);
-	elog(DEBUG1, "pgfincore : %lu",(unsigned long)result);
+		elog(DEBUG2, "pgfincore : %lu",(unsigned long)result);
 
 		if (result == -1)
 		  break;
 		totalsize += result;
 	}
-	elog(DEBUG1, "pgfincore2 : %lu",(unsigned long)totalsize);
+	elog(DEBUG2, "pgfincore2 : %lu",(unsigned long)totalsize);
 
-	return (unsigned long)totalsize;
+	return totalsize;
 }
 
 
 static int64
 pgfincore(char *filename) {
   // our counter for block in memory
-  int     n=0;
-  // our return value TODO use array.
-//   VarChar *return_pgfincore ;
+  int64     n=0;
+  int64     cut=0;
+  int     flag=1;
 
   // for open file
   int fd;
@@ -158,7 +137,6 @@ pgfincore(char *filename) {
   unsigned char *vec = (unsigned char *)0;
 
   // OS things
-  off_t pa_offset;
   size_t pageSize = sysconf(_SC_PAGESIZE);
   register size_t pageIndex;
 
@@ -166,16 +144,13 @@ pgfincore(char *filename) {
   fd = open(filename, O_RDONLY);
   if (fd == -1)
 	return -1;
-//     elog(ERROR, "Can not open object file : %s", filename);
 
   if (fstat(fd, &st) == -1) {
     close(fd);
     elog(ERROR, "Can not stat object file : %s", filename);
   }
 
-  pa_offset = 0 & ~(sysconf(_SC_PAGE_SIZE) - 1);
-
-  pa = mmap(NULL, st.st_size - pa_offset, PROT_NONE, MAP_SHARED, fd, pa_offset);
+  pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
   if (pa == MAP_FAILED) {
     close(fd);
     elog(ERROR, "Can not mmap object file : %s", filename);
@@ -203,8 +178,13 @@ pgfincore(char *filename) {
 	// block in memory
     if (vec[pageIndex] & 1) {
       n++;
-//       elog (NOTICE, "r: %lu / %lu", (unsigned long)pageIndex, (unsigned long)(st.st_size/pageSize));  /* TODO fix that /!\ (on veut concaténer tous les résultats pour le moment)*/
+      elog (DEBUG5, "r: %lu / %lu", (unsigned long)pageIndex, (unsigned long)(st.st_size/pageSize)); 
+      if (flag)
+		cut++;
+		flag = 0;
     }
+	else
+	  flag=1;
   }
 
 //   free things
@@ -212,10 +192,7 @@ pgfincore(char *filename) {
   munmap(pa, (st.st_size+pageSize-1)/pageSize);
   close(fd);
 
-//   return_pgfincore = sprintf("pgfincore : %lu of %lu block in linux cache",(unsigned long)n, (unsigned long)(st.st_size/pageSize));
+  elog(DEBUG1, "pgfincore %s: %lu of %lu block in linux cache, %lu groups",filename, (unsigned long)n, (unsigned long)(st.st_size/pageSize), (unsigned long)cut);
 
-	elog(DEBUG1, "pgfincore : %lu of %lu block in linux cache",(unsigned long)n, (unsigned long)(st.st_size/pageSize));
-
-//   PG_RETURN_VARCHAR_P(return_pgfincore);
-  return (unsigned long)n;
+  return n;
 }

@@ -4,6 +4,16 @@ make clean && make && sudo make install
 
 Create the functions from the sql script (it should be in your contrib directory)
 
-select relname,block_mem,size,(block_mem*4*1024*100/size)||' %'  as ratio_memory from (select relname, pgfincore_name(relname) as block_mem, pg_relation_size(relname) as size from pg_stat_user_tables ) s;
+select relname, 
+       pg_size_pretty(size) as size, 
+       size/4/1024 as block_disk,
+       block_mem, 
+       (block_mem*4*1024*100/size)||' %'  as block_ratio 
+from (select relname, 
+             pgfincore(relname) as block_mem, 
+             pg_relation_size(relname) as size 
+      from pg_stat_user_tables ) s
+order by 3 desc;
 
 Enjoy ;)
+

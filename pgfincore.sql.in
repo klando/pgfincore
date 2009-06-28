@@ -1,12 +1,12 @@
 SET search_path = public;
 
-CREATE OR REPLACE FUNCTION pgfincore_name(TEXT)
-RETURNS integer
+CREATE OR REPLACE FUNCTION pgfincore(TEXT)
+RETURNS bigint
 AS 'MODULE_PATHNAME','pgfincore_name'
 LANGUAGE C;
 
-CREATE OR REPLACE FUNCTION pgfincore_oid(OID)
-RETURNS integer
-AS 'MODULE_PATHNAME','pgfincore_name'
+CREATE OR REPLACE FUNCTION pgfincore(OID)
+RETURNS bigint
+AS 'MODULE_PATHNAME','pgfincore_oid'
 LANGUAGE C;
 
