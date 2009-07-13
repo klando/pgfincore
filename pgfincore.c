@@ -25,7 +25,7 @@
 #include <fcntl.h> /* fcntl, open */
 #include <stdlib.h> /* exit, calloc, free */
 #include <sys/stat.h> /* stat, fstat */
-#include <sys/types.h> /* size_t */
+#include <sys/types.h> /* size_t, mincore */
 #include <unistd.h> /* sysconf, close */
 #include <sys/mman.h> /* mmap, mincore */
 /* } */
@@ -164,7 +164,7 @@ pgfincore(char *filename) {
     return -1;
   }
 
-  if (0 != mincore(pa, st.st_size, vec)) {
+  if (mincore(pa, st.st_size, vec) != 0) {
     free(vec);
     munmap(pa, (st.st_size+pageSize-1)/pageSize);
     close(fd);
