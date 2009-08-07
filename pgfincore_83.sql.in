@@ -2,7 +2,7 @@ SET search_path = public;
 
 CREATE OR REPLACE FUNCTION pgfincore(TEXT)
 RETURNS bigint
-AS 'MODULE_PATHNAME'
+AS 'MODULE_PATHNAME','pgfincore_name'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION pgfincore(OID)
