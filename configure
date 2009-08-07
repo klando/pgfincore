@@ -1,7 +1,7 @@
 #!/bin/sh
 
 PG_VER=`pg_config --version|awk '{print $2}'`
-PG_VER=8.4.0
+PG_VER=8.3.0
 
 if [[ ($PG_VER < '8.4.0') ]]
 then

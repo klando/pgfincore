@@ -6,5 +6,5 @@ DOCS = README.pgfincore
 #SHLIBS_LINK = -lpgfincore
 
 #PGXS := $(shell pg_config --pgxs)
-PGXS = /usr/lib/postgresql/8.4/lib/pgxs/src/makefiles/pgxs.mk
+PGXS = /usr/lib/postgresql/8.3/lib/pgxs/src/makefiles/pgxs.mk
 include $(PGXS)
