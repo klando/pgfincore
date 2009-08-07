@@ -1,0 +1,11 @@
+SET search_path = public;
+
+CREATE OR REPLACE FUNCTION pgfincore(regclass, TEXT)
+RETURNS bigint
+AS 'MODULE_PATHNAME/pgfincore','pgfincore'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION pgfincore(regclass)
+RETURNS bigint
+AS 'SELECT pgfincore($1, ''main'')'
+LANGUAGE SQL;
