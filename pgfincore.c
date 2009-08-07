@@ -36,6 +36,14 @@
 #include "catalog/catalog.h" /* relpath */
 #include "catalog/namespace.h" /* makeRangeVarFromNameList */
 #include "utils/builtins.h" /* textToQualifiedNameList */
+#include "utils/rel.h" /* Relation */
+
+
+#ifdef PG_VERSION_NUM
+#define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
+#else
+#define PG_MAJOR_VERSION 803
+#endif
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -43,17 +51,41 @@ PG_MODULE_MAGIC;
 /* } */
 
 
+#if PG_MAJOR_VERSION > 803
+static int64 pgfincore_all(RelFileNode *rfn, ForkNumber forknum);
+Datum pgfincore(PG_FUNCTION_ARGS); /* Prototype */
+PG_FUNCTION_INFO_V1(pgfincore);
+#else
+static int64 pgfincore_all(RelFileNode *rfn);
 Datum pgfincore_name(PG_FUNCTION_ARGS); /* Prototype */
 Datum pgfincore_oid(PG_FUNCTION_ARGS); /* Prototype */
-static int64 pgfincore_all(RelFileNode *rfn);
-static int64 pgfincore(char *filename);
-
 PG_FUNCTION_INFO_V1(pgfincore_name);
 PG_FUNCTION_INFO_V1(pgfincore_oid);
+#endif
+static int64 pgfincore_file(char *filename);
+
 
 
 /* fincore -
  */
+#if PG_MAJOR_VERSION > 803
+Datum 
+pgfincore(PG_FUNCTION_ARGS)
+{
+  Oid		relOid = PG_GETARG_OID(0);
+  text		*forkName = PG_GETARG_TEXT_P(1);
+  Relation	rel;
+  int64		size;
+
+  rel = relation_open(relOid, AccessShareLock);
+
+  size = pgfincore_all(&(rel->rd_node), forkname_to_number(text_to_cstring(forkName)));
+
+  relation_close(rel, AccessShareLock);
+
+  PG_RETURN_INT64(size);
+}
+#else
 Datum 
 pgfincore_oid(PG_FUNCTION_ARGS)
 {
@@ -85,10 +117,15 @@ Datum pgfincore_name(PG_FUNCTION_ARGS) {
 
 	PG_RETURN_INT64(size);
 }
+#endif
 
 // calculate number of block in memory
 static int64
+#if PG_MAJOR_VERSION > 803
+pgfincore_all(RelFileNode *rfn, ForkNumber forknum)
+#else
 pgfincore_all(RelFileNode *rfn)
+#endif
 {
 	int64		totalsize = 0;
 	int64		result    = 0;
@@ -96,8 +133,11 @@ pgfincore_all(RelFileNode *rfn)
 	char		pathname[MAXPGPATH];
 	unsigned int segcount = 0;
 
+#if PG_MAJOR_VERSION > 803
+	relationpath = relpath(*rfn, forknum);
+#else
 	relationpath = relpath(*rfn);
-
+#endif
 	for (segcount = 0;; segcount++)
 	{
 		if (segcount == 0)
@@ -107,7 +147,7 @@ pgfincore_all(RelFileNode *rfn)
 			snprintf(pathname, MAXPGPATH, "%s.%u",
 					 relationpath, segcount);
 
-		result = pgfincore(pathname);
+		result = pgfincore_file(pathname);
 		elog(DEBUG2, "pgfincore : %lu",(unsigned long)result);
 
 		if (result == -1)
@@ -121,7 +161,7 @@ pgfincore_all(RelFileNode *rfn)
 
 
 static int64
-pgfincore(char *filename) {
+pgfincore_file(char *filename) {
   // our counter for block in memory
   int64     n=0;
   int64     cut=0;
@@ -149,7 +189,9 @@ pgfincore(char *filename) {
     close(fd);
     elog(ERROR, "Can not stat object file : %s", filename);
   }
-
+  if (st.st_size == 0) {
+    return 0;
+  } 
   pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
   if (pa == MAP_FAILED) {
     close(fd);
