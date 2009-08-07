@@ -1,25 +1,14 @@
 #!/bin/sh
-echo "MODULES = pgfincore" > ./Makefile
 
 PG_VER=`pg_config --version|awk '{print $2}'`
-PG_VER=8.3.0
+PG_VER=8.4.0
+
 if [[ ($PG_VER < '8.4.0') ]]
 then
-  echo "DATA_built = pgfincore_83.sql" >> ./Makefile
-  echo "DATA = uninstall_pgfincore_83.sql" >> ./Makefile
+  cp ./pgfincore_83.sql.in ./pgfincore.sql.in
+  cp ./uninstall_pgfincore_83.sql.in ./uninstall_pgfincore.sql.in
 else
-  echo "DATA_built = pgfincore_84.sql" >> ./Makefile
-  echo "DATA = uninstall_pgfincore_84.sql" >> ./Makefile
+  cp ./pgfincore_84.sql.in ./pgfincore.sql.in
+  cp ./uninstall_pgfincore_84.sql.in ./uninstall_pgfincore.sql.in
 fi
 
-cat <<EOF >> ./Makefile
-DOCS = README.pgfincore
-REGRESS = pgfincore
-
-PG_LIBS = -lpgfincore
-SHLIBS_LINK = -lpgfincore
-# PG_CPPFLAGS = -lpgfincore
-
-PGXS := \$(shell pg_config --pgxs)
-include \$(PGXS)
-EOF
