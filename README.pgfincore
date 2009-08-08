@@ -1,17 +1,23 @@
-v0.1
+Version :
+v0.2
 
-make clean && make && sudo make install
+Install:
+./configure && make clean && make && sudo make install
 
 Create the functions from the sql script (it should be in your contrib directory)
 
+Debug:
+set client_min_messages TO debug;
+
+Use it:
 select relname, 
        pg_size_pretty(size) as size, 
        size/4/1024 as block_disk,
        block_mem, 
-       (block_mem*4*1024*100/size)||' %'  as block_ratio 
+       CASE WHEN size=0 then '0 %' ELSE (block_mem*4*1024*100/size)||' %'  END as block_ratio
 from (select relname, 
-             pgfincore(relname) as block_mem, 
-             pg_relation_size(relname) as size 
+             pgfincore(relname::text) as block_mem, 
+             pg_relation_size(relname::text) as size 
       from pg_stat_user_tables ) s
 order by 3 desc;
 

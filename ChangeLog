@@ -5,3 +5,8 @@
 06/29/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.1.1 - cleaning and fixing
+
+08/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
+ * 0.2 - add support for 8.4
+       - fix mmap error when file is empty
