@@ -10,16 +10,22 @@ Debug:
 set client_min_messages TO debug;
 
 Use it:
-select relname, 
-       pg_size_pretty(size) as size, 
+create view pgfincore as 
+select  relation,
+       pg_size_pretty(size) as size,
        size/4/1024 as block_disk,
-       block_mem, 
-       CASE WHEN size=0 then '0 %' ELSE (block_mem*4*1024*100/size)||' %'  END as block_ratio
-from (select relname, 
-             pgfincore(relname::text) as block_mem, 
-             pg_relation_size(relname::text) as size 
-      from pg_stat_user_tables ) s
-order by 3 desc;
+       block_mem,
+       CASE WHEN size=0 then NULL ELSE (block_mem*4*1024*100/size)||' %'  END as ratio
+from (select relname as relation,
+             pgfincore(relname::text) as block_mem,
+             pg_relation_size(relname::text) as size
+      from pg_stat_user_tables
+      union all
+      select relname||'.'||indexrelname as relation,
+             pgfincore(indexrelname::text) as block_mem,
+             pg_relation_size(indexrelname::text) as size
+      from pg_stat_user_indexes ) s
+order by 1 ;
 
 Enjoy ;)
 
