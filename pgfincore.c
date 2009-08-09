@@ -37,6 +37,7 @@
 #include "catalog/namespace.h" /* makeRangeVarFromNameList */
 #include "utils/builtins.h" /* textToQualifiedNameList */
 #include "utils/rel.h" /* Relation */
+#include "funcapi.h" /* SRF */
 
 
 #ifdef PG_VERSION_NUM
@@ -51,117 +52,94 @@ PG_MODULE_MAGIC;
 /* } */
 
 
-#if PG_MAJOR_VERSION > 803
-static int64 pgfincore_all(RelFileNode *rfn, ForkNumber forknum);
 Datum pgfincore(PG_FUNCTION_ARGS); /* Prototype */
-PG_FUNCTION_INFO_V1(pgfincore);
-#else
-static int64 pgfincore_all(RelFileNode *rfn);
-Datum pgfincore_name(PG_FUNCTION_ARGS); /* Prototype */
-Datum pgfincore_oid(PG_FUNCTION_ARGS); /* Prototype */
-PG_FUNCTION_INFO_V1(pgfincore_name);
-PG_FUNCTION_INFO_V1(pgfincore_oid);
-#endif
 static int64 pgfincore_file(char *filename);
 
-
+typedef struct
+{
+  Relation rel;				/* the relation */
+  int64 segcount;	/* the segment current number */
+  char *relationpath;		/* the relation path */
+} pgfincore_fctx;
 
 /* fincore -
  */
-#if PG_MAJOR_VERSION > 803
-Datum 
-pgfincore(PG_FUNCTION_ARGS)
+PG_FUNCTION_INFO_V1(pgfincore);
+Datum pgfincore(PG_FUNCTION_ARGS)
 {
+  FuncCallContext *funcctx;
+  MemoryContext oldcontext;
+  pgfincore_fctx *fctx;
+
   Oid		relOid = PG_GETARG_OID(0);
   text		*forkName = PG_GETARG_TEXT_P(1);
   Relation	rel;
-  int64		size;
+  char		*relationpath;
+  char		pathname[MAXPGPATH];
+  int64 segcount;
+  int64 result    = 0;
 
-  rel = relation_open(relOid, AccessShareLock);
+  /* stuff done only on the first call of the function */
+  if (SRF_IS_FIRSTCALL())
+  {
+	/* create a function context for cross-call persistence */
+	funcctx = SRF_FIRSTCALL_INIT();
 
-  size = pgfincore_all(&(rel->rd_node), forkname_to_number(text_to_cstring(forkName)));
+	/*
+	 * switch to memory context appropriate for multiple function calls
+	 */
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-  relation_close(rel, AccessShareLock);
+	/* allocate memory for user context */
+	fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
 
-  PG_RETURN_INT64(size);
-}
-#else
-Datum 
-pgfincore_oid(PG_FUNCTION_ARGS)
-{
-	Oid			relOid = PG_GETARG_OID(0);
-	Relation	rel;
-	int64		size = 0;
+	/*
+	* Use fctx to keep track of upper and lower bounds from call to call.
+	* It will also be used to carry over the spare value we get from the
+	* Box-Muller algorithm so that we only actually calculate a new value
+	* every other call.
+	*/
+	fctx->rel = relation_open(relOid, AccessShareLock);
+	fctx->relationpath = relpath(fctx->rel->rd_node, forkname_to_number(text_to_cstring(forkName)));
+	fctx->segcount = 0;
+// 	elog(DEBUG2, "1st call : %s",fctx->relationpath);
+	funcctx->user_fctx = fctx;
 
-	rel = relation_open(relOid, AccessShareLock);
+	MemoryContextSwitchTo(oldcontext);
+  }
 
-	size = pgfincore_all(&(rel->rd_node));
+  /* stuff done on every call of the function */
+  funcctx = SRF_PERCALL_SETUP();
+  segcount = fctx->segcount;
+  relationpath = fctx->relationpath;
+  rel = fctx->rel;
 
+  // result
+  if (segcount == 0)
+	snprintf(pathname, MAXPGPATH, "%s", relationpath);
+  else
+	snprintf(pathname, MAXPGPATH, "%s.%u", relationpath, segcount);
+
+  result = pgfincore_file(pathname);
+  elog(DEBUG2, "pgfincore : %lu",(unsigned long)result);
+
+  /* do when there is no more left */
+  if (result == -1) {
 	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(size);
-}
-
-Datum pgfincore_name(PG_FUNCTION_ARGS) {
-	text	   *relname = PG_GETARG_TEXT_P(0);
-	RangeVar   *relrv;
-	Relation	rel;
-	int64		size = 0;
-
-	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-	rel = relation_openrv(relrv, AccessShareLock);
-
-	size = pgfincore_all(&(rel->rd_node));
-
-	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(size);
-}
-#endif
-
-// calculate number of block in memory
-static int64
-#if PG_MAJOR_VERSION > 803
-pgfincore_all(RelFileNode *rfn, ForkNumber forknum)
-#else
-pgfincore_all(RelFileNode *rfn)
-#endif
-{
-	int64		totalsize = 0;
-	int64		result    = 0;
-	char	   *relationpath;
-	char		pathname[MAXPGPATH];
-	unsigned int segcount = 0;
-
-#if PG_MAJOR_VERSION > 803
-	relationpath = relpath(*rfn, forknum);
-#else
-	relationpath = relpath(*rfn);
-#endif
-	for (segcount = 0;; segcount++)
-	{
-		if (segcount == 0)
-			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
-		else
-			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
-
-		result = pgfincore_file(pathname);
-		elog(DEBUG2, "pgfincore : %lu",(unsigned long)result);
-
-		if (result == -1)
-		  break;
-		totalsize += result;
-	}
-	elog(DEBUG2, "pgfincore2 : %lu",(unsigned long)totalsize);
-
-	return totalsize;
+	SRF_RETURN_DONE(funcctx);
+  }
+  /* or send the result */
+  else {
+	fctx->segcount++;
+	SRF_RETURN_NEXT(funcctx, Int64GetDatum(result));
+  }
 }
 
 
-static int64
-pgfincore_file(char *filename) {
+
+
+
+static int64 pgfincore_file(char *filename) {
   // our counter for block in memory
   int64     n=0;
   int64     cut=0;

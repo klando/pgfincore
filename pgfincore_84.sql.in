@@ -1,11 +1,11 @@
 SET search_path = public;
 
 CREATE OR REPLACE FUNCTION pgfincore(regclass, text)
-RETURNS bigint
+RETURNS setof bigint
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION pgfincore(regclass)
-RETURNS bigint
+RETURNS setof bigint
 AS 'SELECT pgfincore($1, ''main'')'
 LANGUAGE SQL;
