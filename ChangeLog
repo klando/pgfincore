@@ -10,3 +10,7 @@
 
  * 0.2 - add support for 8.4
        - fix mmap error when file is empty
+
+10/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
+ * 0.2.1 - fix munmap call error
