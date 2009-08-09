@@ -200,7 +200,7 @@ pgfincore_file(char *filename) {
 
   vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
   if ((void *)0 == vec) {
-    munmap(pa, (st.st_size+pageSize-1)/pageSize);
+    munmap(pa, st.st_size);
     close(fd);
     elog(ERROR, "Can not calloc object file : %s", filename);
     return -1;
@@ -231,7 +231,7 @@ pgfincore_file(char *filename) {
 
 //   free things
   free(vec);
-  munmap(pa, (st.st_size+pageSize-1)/pageSize);
+  munmap(pa, st.st_size);
   close(fd);
 
   elog(DEBUG1, "pgfincore %s: %lu of %lu block in linux cache, %lu groups",filename, (unsigned long)n, (unsigned long)(st.st_size/pageSize), (unsigned long)cut);
