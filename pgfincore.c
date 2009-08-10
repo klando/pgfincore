@@ -53,8 +53,6 @@ PG_MODULE_MAGIC;
 /* } */
 
 
-Datum pgfincore(PG_FUNCTION_ARGS); 
-static int64 pgfincore_file(char *filename);
 
 typedef struct
 {
@@ -63,6 +61,16 @@ typedef struct
   char *relationpath;		/* the relation path */
 } pgfincore_fctx;
 
+typedef struct
+{
+  int64		block_mem;		/* number of blocks in memory */
+  int64		block_disk;		/* size of file in blocks */
+  int64		group_mem;		/* number of group of adjacent blocks in memory */
+} pgfincore_info;
+
+Datum pgfincore(PG_FUNCTION_ARGS); 
+static pgfincore_info pgfincore_file(char *filename);
+
 /* fincore -
  */
 PG_FUNCTION_INFO_V1(pgfincore);
@@ -70,7 +78,7 @@ Datum pgfincore(PG_FUNCTION_ARGS)
 {
   FuncCallContext *funcctx;
   pgfincore_fctx *fctx;
-  int64 		result;
+  pgfincore_info *info;
   char			pathname[MAXPGPATH];
 
   /* stuff done only on the first call of the function */
@@ -126,14 +134,16 @@ Datum pgfincore(PG_FUNCTION_ARGS)
 
   elog(DEBUG2, "pathname is %s", pathname);
 
-  result = pgfincore_file(pathname);
+  info = (pgfincore_info *) palloc(sizeof(pgfincore_info));
+  *info = pgfincore_file(pathname);
 
-  elog(DEBUG2, "got result = %lu", (unsigned long)result); // TODO fix the %lu
+  elog(DEBUG2, "got result = %lu", (unsigned long)info->block_mem); // TODO fix the %lu
 
   /* do when there is no more left */
-  if (result == -1) {
+  if (info->block_disk == -1) {
 	relation_close(fctx->rel, AccessShareLock);
 	elog(DEBUG3, "last call : %s", fctx->relationpath);
+	pfree(fctx);
 	SRF_RETURN_DONE(funcctx);
   }
   /* or send the result */
@@ -144,23 +154,20 @@ Datum pgfincore(PG_FUNCTION_ARGS)
 
 	fctx->segcount++;
 	values[0] = CStringGetTextDatum(pathname);
-	values[1] = Int64GetDatum(result);
+	values[1] = Int64GetDatum(info->block_mem);
 	memset(nulls, 0, sizeof(nulls));
 	tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-	elog(DEBUG1, "file %s contain %i block in linux cache memory", pathname, result);
+	elog(DEBUG1, "file %s contain %i block in linux cache memory", pathname, info->block_mem);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
   }
 }
 
-
-
-
-
-static int64 pgfincore_file(char *filename) {
+static pgfincore_info pgfincore_file(char *filename) {
   // our counter for block in memory
   int64     n=0;
-  int64     cut=0;
-  int     flag=1;
+  int64     nmem=0;
+  int       flag=1;
+  pgfincore_info *info;
 
   // for open file
   int fd;
@@ -176,44 +183,51 @@ static int64 pgfincore_file(char *filename) {
   register size_t pageIndex;
 
 /* Do the main work */
+  info = (pgfincore_info *) palloc(sizeof(pgfincore_info));
   fd = open(filename, O_RDONLY);
-  if (fd == -1)
-	return -1;
-
+  if (fd == -1) {
+	info->block_disk = -1;
+    return *info;
+  }
   if (fstat(fd, &st) == -1) {
     close(fd);
     elog(ERROR, "Can not stat object file : %s", filename);
   }
   if (st.st_size == 0) {
-    return 0;
+	info->block_disk = 0;
+	info->block_mem = 0;
+	info->group_mem = 0;
+    return *info;
   }
 
-  /* We need to split mmap size to be sure (?) to be able to mmap */
+  /* TODO We need to split mmap size to be sure (?) to be able to mmap */
   pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
   if (pa == MAP_FAILED) {
     close(fd);
     elog(ERROR, 
-		 "Can not mmap object file : %s, errno = %i,%s", 
-		 filename, 
-		 errno, 
+		 "Can not mmap object file : %s, errno = %i,%s",
+		 filename,
+		 errno,
 		 strerror(errno));
   }
 
   vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
   if ((void *)0 == vec) {
-    munmap(pa, (st.st_size+pageSize-1)/pageSize);
+    munmap(pa, st.st_size);
     close(fd);
     elog(ERROR, "Can not calloc object file : %s", filename);
-    return -1;
+	info->block_disk = -1;
+    return *info;
   }
 
   if (mincore(pa, st.st_size, vec) != 0) {
     free(vec);
-    munmap(pa, (st.st_size+pageSize-1)/pageSize);
+    munmap(pa, st.st_size);
     close(fd);
     elog(ERROR, "mincore(%p, %lu, %p): %s\n",
             pa, (unsigned long)st.st_size, vec, strerror(errno));
-    return -1;
+	info->block_disk = -1;
+    return *info;
   }
 
   /* handle the results */
@@ -221,27 +235,24 @@ static int64 pgfincore_file(char *filename) {
 	// block in memory
     if (vec[pageIndex] & 1) {
       n++;
-      elog (DEBUG5, "r: %lu / %lu", (unsigned long)pageIndex, (unsigned long)(st.st_size/pageSize)); 
+      elog (DEBUG5, "in memory blocks : %lu / %lu", (unsigned long)pageIndex, (unsigned long)(st.st_size/pageSize)); 
       if (flag)
-		cut++;
+		nmem++;
 		flag = 0;
     }
 	else
 	  flag=1;
   }
+  info->block_disk = st.st_size/pageSize;
+  info->block_mem = n;
+  info->group_mem = nmem;
 
-//   free things
+  //   free things
   free(vec);
-  if (munmap(pa, st.st_size) == -1) {
-	elog(ERROR, 
-	  "Can not munmap object file : %s, errno = %i,%s", 
-	  filename, 
-	  errno, 
-	  strerror(errno));
-  }
+  munmap(pa, st.st_size);
   close(fd);
 
-  elog(DEBUG1, "pgfincore %s: %lu of %lu block in linux cache, %lu groups",filename, (unsigned long)n, (unsigned long)(st.st_size/pageSize), (unsigned long)cut);
+  elog(DEBUG1, "pgfincore %s: %lu of %lu block in linux cache, %lu groups",filename, (unsigned long)n, (unsigned long)(st.st_size/pageSize), (unsigned long)info->group_mem);
 
-  return n;
+  return *info; /* return block_disk, block_mem, group_mem   */
 }
