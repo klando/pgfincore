@@ -112,10 +112,14 @@ Datum pgfincore(PG_FUNCTION_ARGS)
 	fctx->segcount = 0;
 	funcctx->user_fctx = fctx;
 	
-	tupdesc = CreateTemplateTupleDesc(2, false);
+	tupdesc = CreateTemplateTupleDesc(4, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
 										TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_mem",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
+										INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_mem",
+										INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "group_mem",
 										INT8OID, -1, 0);
 
 	funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -149,12 +153,14 @@ Datum pgfincore(PG_FUNCTION_ARGS)
   /* or send the result */
   else {
 	HeapTuple		tuple;
-	Datum			values[2];
-	bool			nulls[2];
+	Datum			values[4];
+	bool			nulls[4];
 
 	fctx->segcount++;
 	values[0] = CStringGetTextDatum(pathname);
-	values[1] = Int64GetDatum(info->block_mem);
+	values[1] = Int64GetDatum(info->block_disk);
+	values[2] = Int64GetDatum(info->block_mem);
+	values[3] = Int64GetDatum(info->group_mem);
 	memset(nulls, 0, sizeof(nulls));
 	tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 	elog(DEBUG1, "file %s contain %i block in linux cache memory", pathname, info->block_mem);

@@ -1,12 +1,12 @@
 SET search_path = public;
 
 CREATE OR REPLACE FUNCTION 
-pgfincore(IN regclass, IN text, OUT relpath text, OUT block_mem bigint)
+pgfincore(IN regclass, IN text, OUT relpath text, OUT block_disk bigint, OUT block_mem bigint, OUT group_mem bigint)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
-CREATE OR REPLACE FUNCTION pgfincore(IN regclass, OUT relpath text, OUT block_mem bigint)
+CREATE OR REPLACE FUNCTION pgfincore(IN regclass, OUT relpath text, OUT block_disk bigint, OUT block_mem bigint, OUT group_mem bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'')'
 LANGUAGE SQL;
