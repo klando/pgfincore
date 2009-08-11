@@ -37,6 +37,8 @@
 #include "catalog/namespace.h" /* makeRangeVarFromNameList */
 #include "utils/builtins.h" /* textToQualifiedNameList */
 #include "utils/rel.h" /* Relation */
+#include "funcapi.h" /* SRF */
+#include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 
 
 #ifdef PG_VERSION_NUM
@@ -50,122 +52,144 @@ PG_MODULE_MAGIC;
 #endif
 /* } */
 
+typedef struct
+{
+  Relation rel;				/* the relation */
+  unsigned int segcount;	/* the segment current number */
+  char *relationpath;		/* the relation path */
+} pgfincore_fctx;
 
-#if PG_MAJOR_VERSION > 803
-static int64 pgfincore_all(RelFileNode *rfn, ForkNumber forknum);
-Datum pgfincore(PG_FUNCTION_ARGS); /* Prototype */
-PG_FUNCTION_INFO_V1(pgfincore);
-#else
-static int64 pgfincore_all(RelFileNode *rfn);
-Datum pgfincore_name(PG_FUNCTION_ARGS); /* Prototype */
-Datum pgfincore_oid(PG_FUNCTION_ARGS); /* Prototype */
-PG_FUNCTION_INFO_V1(pgfincore_name);
-PG_FUNCTION_INFO_V1(pgfincore_oid);
-#endif
-static int64 pgfincore_file(char *filename);
+typedef struct
+{
+  int64	block_mem;		/* number of blocks in memory */
+  int64	block_disk;		/* size of file in blocks */
+  int64	group_mem;		/* number of group of adjacent blocks in memory */
+} pgfincore_info;
 
-
+Datum pgfincore(PG_FUNCTION_ARGS); 
+static pgfincore_info * pgfincore_file(char *filename);
 
 /* fincore -
  */
-#if PG_MAJOR_VERSION > 803
-Datum 
+PG_FUNCTION_INFO_V1(pgfincore);
+Datum
 pgfincore(PG_FUNCTION_ARGS)
 {
-  Oid		relOid = PG_GETARG_OID(0);
-  text		*forkName = PG_GETARG_TEXT_P(1);
-  Relation	rel;
-  int64		size;
+  FuncCallContext *funcctx;
+  pgfincore_fctx *fctx;
+  pgfincore_info *info;
+  char			pathname[MAXPGPATH];
 
-  rel = relation_open(relOid, AccessShareLock);
-
-  size = pgfincore_all(&(rel->rd_node), forkname_to_number(text_to_cstring(forkName)));
-
-  relation_close(rel, AccessShareLock);
-
-  PG_RETURN_INT64(size);
-}
-#else
-Datum 
-pgfincore_oid(PG_FUNCTION_ARGS)
-{
+  /* stuff done only on the first call of the function */
+  if (SRF_IS_FIRSTCALL())
+  {
+	TupleDesc     tupdesc;
+	MemoryContext oldcontext;
 	Oid			relOid = PG_GETARG_OID(0);
-	Relation	rel;
-	int64		size = 0;
+	text			*forkName = PG_GETARG_TEXT_P(1);
 
-	rel = relation_open(relOid, AccessShareLock);
+	/* create a function context for cross-call persistence */
+	funcctx = SRF_FIRSTCALL_INIT();
 
-	size = pgfincore_all(&(rel->rd_node));
+	/*
+	 * switch to memory context appropriate for multiple function calls
+	 */
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-	relation_close(rel, AccessShareLock);
+	/* allocate memory for user context */
+	fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
 
-	PG_RETURN_INT64(size);
+	/*
+	* Use fctx to keep track of upper and lower bounds from call to call.
+	* It will also be used to carry over the spare value we get from the
+	* Box-Muller algorithm so that we only actually calculate a new value
+	* every other call.
+	*/
+	fctx->rel = relation_open(relOid, AccessShareLock);
+	fctx->relationpath = relpath(fctx->rel->rd_node,
+								 forkname_to_number(text_to_cstring(forkName)));
+	// TODO test rel->rd_istemp et rel->rd_islocaltem
+	fctx->segcount = 0;
+	funcctx->user_fctx = fctx;
+	
+	tupdesc = CreateTemplateTupleDesc(5, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relname",
+										TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "relpath",
+										TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",
+										INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",
+										INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",
+										INT8OID, -1, 0);
+
+	funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+	elog(DEBUG3, "1st call : %s",
+		 fctx->relationpath);
+
+	MemoryContextSwitchTo(oldcontext);
+  }
+
+  funcctx = SRF_PERCALL_SETUP();
+
+  if (fctx->segcount == 0)
+	snprintf(pathname, MAXPGPATH, "%s",
+			 fctx->relationpath);
+  else
+	snprintf(pathname, MAXPGPATH, "%s.%u",
+			 fctx->relationpath, fctx->segcount);
+
+  elog(DEBUG2, "pathname is %s", pathname);
+
+  info = (pgfincore_info *) palloc(sizeof(pgfincore_info));
+  info = pgfincore_file(pathname);
+
+  elog(DEBUG2, "got result = %lld",
+	   info->block_mem);
+
+  /* do when there is no more left */
+  if (info->block_disk == -1) {
+	relation_close(fctx->rel, AccessShareLock);
+	elog(DEBUG3, "last call : %s",
+		 fctx->relationpath);
+	pfree(fctx);
+	pfree(info);
+	SRF_RETURN_DONE(funcctx);
+  }
+  /* or send the result */
+  else {
+	HeapTuple		tuple;
+	Datum			values[5];
+	bool			nulls[5];
+
+	fctx->segcount++;
+
+	values[0] = CStringGetTextDatum(RelationGetRelationName(fctx->rel));
+	values[1] = CStringGetTextDatum(pathname);
+	values[2] = Int64GetDatum(info->block_disk);
+	values[3] = Int64GetDatum(info->block_mem);
+	values[4] = Int64GetDatum(info->group_mem);
+	memset(nulls, 0, sizeof(nulls));
+
+	tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+	elog(DEBUG1, "file %s contain %lld block in linux cache memory",
+		 pathname, info->block_mem);
+	pfree(info);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+  }
 }
 
-Datum pgfincore_name(PG_FUNCTION_ARGS) {
-	text	   *relname = PG_GETARG_TEXT_P(0);
-	RangeVar   *relrv;
-	Relation	rel;
-	int64		size = 0;
-
-	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
-	rel = relation_openrv(relrv, AccessShareLock);
-
-	size = pgfincore_all(&(rel->rd_node));
-
-	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(size);
-}
-#endif
-
-// calculate number of block in memory
-static int64
-#if PG_MAJOR_VERSION > 803
-pgfincore_all(RelFileNode *rfn, ForkNumber forknum)
-#else
-pgfincore_all(RelFileNode *rfn)
-#endif
-{
-	int64		totalsize = 0;
-	int64		result    = 0;
-	char	   *relationpath;
-	char		pathname[MAXPGPATH];
-	unsigned int segcount = 0;
-
-#if PG_MAJOR_VERSION > 803
-	relationpath = relpath(*rfn, forknum);
-#else
-	relationpath = relpath(*rfn);
-#endif
-	for (segcount = 0;; segcount++)
-	{
-		if (segcount == 0)
-			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
-		else
-			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
-
-		result = pgfincore_file(pathname);
-		elog(DEBUG2, "pgfincore : %lu",(unsigned long)result);
-
-		if (result == -1)
-		  break;
-		totalsize += result;
-	}
-	elog(DEBUG2, "pgfincore2 : %lu",(unsigned long)totalsize);
-
-	return totalsize;
-}
-
-
-static int64
+/*
+ * pgfincore_file handle the mmaping, mincore process (and access file, etc.)
+ * it return a pgfincore_info structure
+ */
+static pgfincore_info *
 pgfincore_file(char *filename) {
-  // our counter for block in memory
-  int64     n=0;
-  int64     cut=0;
-  int     flag=1;
+  pgfincore_info *info;
+  int       flag=1;
 
   // for open file
   int fd;
@@ -180,61 +204,81 @@ pgfincore_file(char *filename) {
   size_t pageSize = sysconf(_SC_PAGESIZE);
   register size_t pageIndex;
 
+  info = (pgfincore_info *) palloc(sizeof(pgfincore_info));
+  info->block_disk = 0;
+  info->block_mem = 0;
+  info->group_mem = 0;
+
 /* Do the main work */
   fd = open(filename, O_RDONLY);
-  if (fd == -1)
-	return -1;
-
+  if (fd == -1) {
+	info->block_disk = -1;
+    return info;
+  }
   if (fstat(fd, &st) == -1) {
     close(fd);
-    elog(ERROR, "Can not stat object file : %s", filename);
+    elog(ERROR, "Can not stat object file : %s",
+		 filename);
+	info->block_disk = -1;
+    return info;
   }
   if (st.st_size == 0) {
-    return 0;
-  } 
+    return info;
+  }
+  info->block_disk = st.st_size/pageSize;
+
+  /* TODO We need to split mmap size to be sure (?) to be able to mmap */
   pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
   if (pa == MAP_FAILED) {
     close(fd);
-    elog(ERROR, "Can not mmap object file : %s", filename);
+    elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric.villemain@dalibo.com with '[pgfincore] ENOMEM' as subject.",
+		 filename, errno, strerror(errno));
+	info->block_disk = -1;
+    return info;
   }
 
   vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
   if ((void *)0 == vec) {
     munmap(pa, st.st_size);
     close(fd);
-    elog(ERROR, "Can not calloc object file : %s", filename);
-    return -1;
+    elog(ERROR, "Can not calloc object file : %s",
+		 filename);
+	info->block_disk = -1;
+    return info;
   }
 
   if (mincore(pa, st.st_size, vec) != 0) {
     free(vec);
-    munmap(pa, (st.st_size+pageSize-1)/pageSize);
+    munmap(pa, st.st_size);
     close(fd);
-    elog(ERROR, "mincore(%p, %lu, %p): %s\n",
-            pa, (unsigned long)st.st_size, vec, strerror(errno));
-    return -1;
+    elog(ERROR, "mincore(%p, %lld, %p): %s\n",
+            pa, (int64)st.st_size, vec, strerror(errno));
+	info->block_disk = -1;
+    return info;
   }
 
   /* handle the results */
   for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
 	// block in memory
     if (vec[pageIndex] & 1) {
-      n++;
-      elog (DEBUG5, "r: %lu / %lu", (unsigned long)pageIndex, (unsigned long)(st.st_size/pageSize)); 
+      info->block_mem++;
+      elog (DEBUG5, "in memory blocks : %lld / %lld",
+			(int64)pageIndex, info->block_disk);
       if (flag)
-		cut++;
+		info->group_mem++;
 		flag = 0;
     }
 	else
 	  flag=1;
   }
 
-//   free things
+  //   free things
   free(vec);
   munmap(pa, st.st_size);
   close(fd);
 
-  elog(DEBUG1, "pgfincore %s: %lu of %lu block in linux cache, %lu groups",filename, (unsigned long)n, (unsigned long)(st.st_size/pageSize), (unsigned long)cut);
+  elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
+	   filename, info->block_mem,  info->block_disk, info->group_mem);
 
-  return n;
+  return info; /* return block_disk, block_mem, group_mem   */
 }
