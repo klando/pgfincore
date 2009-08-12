@@ -40,13 +40,6 @@
 #include "funcapi.h" /* SRF */
 #include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 
-
-#ifdef PG_VERSION_NUM
-#define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
-#else
-#define PG_MAJOR_VERSION 803
-#endif
-
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
