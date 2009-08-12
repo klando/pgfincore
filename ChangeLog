@@ -1,16 +1,22 @@
-06/27/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+12/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
-  * 0.1 - functions are working, basicaly.
+  * 0.3 - pgfincore now return a set of record
+		- relname, relpath, block_disk, block_mem, group_mem
+		- this version can only be build againt a postgresql > 8.3 /!\
+
+10/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
+  * 0.2.1 - fix munmap call error
+
+08/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
+  * 0.2 - add support for 8.4
+		- fix mmap error when file is empty
 
 06/29/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.1.1 - cleaning and fixing
 
-08/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+06/27/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
- * 0.2 - add support for 8.4
-       - fix mmap error when file is empty
-
-10/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
-
- * 0.2.1 - fix munmap call error
+  * 0.1 - functions are working, basicaly.

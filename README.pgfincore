@@ -1,5 +1,5 @@
 Version :
-v0.2
+v0.3
 
 Install:
 ./configure && make clean && make && sudo make install
@@ -7,25 +7,21 @@ Install:
 Create the functions from the sql script (it should be in your contrib directory)
 
 Debug:
-set client_min_messages TO debug;
+set client_min_messages TO debug5;
 
 Use it:
-create view pgfincore as 
-select  relation,
-       pg_size_pretty(size) as size,
-       size/4/1024 as block_disk,
-       block_mem,
-       CASE WHEN size=0 then NULL ELSE (block_mem*4*1024*100/size)||' %'  END as ratio
-from (select relname as relation,
-             pgfincore(relname::text) as block_mem,
-             pg_relation_size(relname::text) as size
-      from pg_stat_user_tables
-      union all
-      select relname||'.'||indexrelname as relation,
-             pgfincore(indexrelname::text) as block_mem,
-             pg_relation_size(indexrelname::text) as size
-      from pg_stat_user_indexes ) s
-order by 1 ;
+
+cedric=# select * from pgfincore('test');
+ relname |      relpath       | block_disk | block_mem | group_mem
+---------+--------------------+------------+-----------+-----------
+ test    | base/16987/26245   |     262144 |         0 |         0
+ test    | base/16987/26245.1 |       8090 |         0 |         0
+cedric=# select * from test limit 10000;
+cedric=# select * from pgfincore('test');
+ relname |      relpath       | block_disk | block_mem | group_mem
+---------+--------------------+------------+-----------+-----------
+ test    | base/16987/26245   |     262144 |       426 |         1
+ test    | base/16987/26245.1 |       8090 |         0 |         0
 
 Enjoy ;)
 

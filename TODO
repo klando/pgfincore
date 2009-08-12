@@ -1,3 +1,3 @@
 * average contigous block or stats like that (what part of the file is in cache)
 * split mmaping in shorter segment (say 64Mb) per sugestion from Andres Freund
-
+* pgfincore_total to get info from relation and its toasted table(s).
