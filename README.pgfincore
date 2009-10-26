@@ -1,11 +1,9 @@
-Version :
-v0.3
-
 Install:
-./configure && make clean && make && sudo make install
+export USE_PGXS=1 ; make clean ; make && sudo make install
 
 Create the functions from the sql script (it should be in your contrib directory)
-
+psql mydb -f pgfincore.sql
+ 
 Debug:
 set client_min_messages TO debug5;
 
@@ -23,5 +21,22 @@ cedric=# select * from pgfincore('test');
  test    | base/16987/26245   |     262144 |       426 |         1
  test    | base/16987/26245.1 |       8090 |         0 |         0
 
+Or more fun :
+
+cedric=# with recursive pgclass (reloid,reltoastrelid) as (
+ select oid, reltoastrelid from pg_class where relname ='largetable'
+union all
+ select t.oid,t.reltoastrelid from pgclass p, pg_class t
+ where p.reltoastrelid = t.oid
+) select pgfincore(pgclass.reloid) from pgclass;
+                pgfincore
+-----------------------------------------
+ (largetable,base/16987/83603,2,0,0)
+ (pg_toast_83603,base/16987/83606,0,0,0)
+
+
+
 Enjoy ;)
+
+
 

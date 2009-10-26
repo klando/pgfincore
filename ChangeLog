@@ -1,3 +1,8 @@
+26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
+  * 0.3.1 - fix Makefile without PGXS
+		  - fix install doc in README
+
 12/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.3 - pgfincore now return a set of record
