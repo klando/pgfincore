@@ -1,5 +1,9 @@
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
+  * 0.3.2 - fix fctx init 
+
+26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+
   * 0.3.1 - fix Makefile without PGXS
 		  - fix install doc in README
 

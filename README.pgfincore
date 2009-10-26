@@ -1,5 +1,6 @@
 Install:
-export USE_PGXS=1 ; make clean ; make && sudo make install
+export USE_PGXS=1 ; make clean ; make 
+su ; export USE_PGXS=1 ; make install
 
 Create the functions from the sql script (it should be in your contrib directory)
 psql mydb -f pgfincore.sql

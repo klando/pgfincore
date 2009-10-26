@@ -126,6 +126,7 @@ pgfincore(PG_FUNCTION_ARGS)
   }
 
   funcctx = SRF_PERCALL_SETUP();
+  fctx = funcctx->user_fctx;
 
   if (fctx->segcount == 0)
 	snprintf(pathname, MAXPGPATH, "%s",
