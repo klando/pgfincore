@@ -38,9 +38,9 @@ typedef struct
 
 typedef struct
 {
-  int64	block_mem;		/* number of blocks in memory */
-  int64	block_disk;		/* size of file in blocks */
-  int64	group_mem;		/* number of group of adjacent blocks in memory */
+  int64	block_mem;		/* number of FS blocks in memory */
+  int64	block_disk;		/* size of file in FS blocks */
+  int64	group_mem;		/* number of group of adjacent FS blocks in memory */
 } pgfincore_info;
 
 Datum pgfincore(PG_FUNCTION_ARGS); 
@@ -83,9 +83,15 @@ pgfincore(PG_FUNCTION_ARGS)
 	* every other call.
 	*/
 	fctx->rel = relation_open(relOid, AccessShareLock);
+	if (rel->rd_istemp || rel->rd_islocaltem){
+		relation_close(fctx->rel, AccessShareLock);
+		elog(DEBUG3, "temp table : %s", fctx->relationpath);
+		pfree(fctx);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
 	fctx->relationpath = relpath(fctx->rel->rd_node,
 								 forkname_to_number(text_to_cstring(forkName)));
-	// TODO test rel->rd_istemp et rel->rd_islocaltem
 	fctx->segcount = 0;
 	funcctx->user_fctx = fctx;
 	
@@ -209,7 +215,7 @@ pgfincore_file(char *filename) {
   pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
   if (pa == MAP_FAILED) {
     close(fd);
-    elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric.villemain@dalibo.com with '[pgfincore] ENOMEM' as subject.",
+    elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric@villemain.org with '[pgfincore] ENOMEM' as subject.",
 		 filename, errno, strerror(errno));
 	info->block_disk = -1;
     return info;
