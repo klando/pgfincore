@@ -12,6 +12,8 @@
 #include <sys/types.h> /* size_t, mincore */
 #include <unistd.h> /* sysconf, close */
 #include <sys/mman.h> /* mmap, mincore */
+#define _XOPEN_SOURCE 600 /* fadvise */
+#include <fcntl.h>  /* fadvise */
 /* } */
 
 /* { PostgreSQL stuff */
@@ -31,6 +33,7 @@ PG_MODULE_MAGIC;
 
 typedef struct
 {
+  int action;				/* the action  fincore, fadvise...*/
   Relation rel;				/* the relation */
   unsigned int segcount;	/* the segment current number */
   char *relationpath;		/* the relation path */
@@ -38,6 +41,8 @@ typedef struct
 
 Datum pgfincore(PG_FUNCTION_ARGS);
 static Datum pgfincore_file(char *filename, FunctionCallInfo fcinfo);
+static Datum pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo);
+// static Datum pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo);
 
 /* fincore -
  */
@@ -84,6 +89,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	}
 	fctx->relationpath = relpath(fctx->rel->rd_node,
 								 forkname_to_number(text_to_cstring(forkName)));
+	fctx->action = PG_GETARG_INT32(2);;
 	fctx->segcount = 0;
 	funcctx->user_fctx = fctx;
 
@@ -110,8 +116,17 @@ pgfincore(PG_FUNCTION_ARGS)
 
   elog(DEBUG2, "pathname is %s", pathname);
 
-  result = pgfincore_file(pathname, fcinfo);
-
+  switch (fctx->action) {
+	case 1 : /* MINCORE */
+	  result = pgfincore_file(pathname, fcinfo);
+	break;
+	case 2 : /* FADV_WILLNEED */
+	  result = pgfadv_willneed_file(pathname, fcinfo);
+	break;
+// 	case 3 : /* FADV_DONTNEED */
+// 	  result = pgfadv_dontneed_file(pathname, fcinfo);
+// 	break;
+  }
   /* do when there is no more left */
   if (DatumGetInt64(GetAttributeByName(result, "block_disk", &isnull)) == 0 || isnull) {
 	relation_close(fctx->rel, AccessShareLock);
@@ -128,7 +143,6 @@ pgfincore(PG_FUNCTION_ARGS)
 
 /*
  * pgfincore_file handle the mmaping, mincore process (and access file, etc.)
- * it return a pgfincore_info structure
  */
 static Datum
 pgfincore_file(char *filename, FunctionCallInfo fcinfo) {
@@ -246,6 +260,70 @@ error:
   values[1] = Int64GetDatum(false);
   values[2] = Int64GetDatum(1);
   values[3] = Int64GetDatum(2);
+  memset(nulls, 0, sizeof(nulls));
+  tuple = heap_form_tuple(tupdesc, values, nulls);
+  return (HeapTupleGetDatum(tuple));
+}
+
+/*
+ * pgfadv_willneed_file
+ */
+static Datum
+pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo) {
+  HeapTuple	tuple;
+  TupleDesc tupdesc;
+  Datum		values[3];
+  bool		nulls[3];
+
+  // for open file
+  int fd;
+  // for stat file
+  struct stat st;
+
+  // OS things
+  size_t pageSize = sysconf(_SC_PAGESIZE);
+//
+  tupdesc = CreateTemplateTupleDesc(3, false);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
+									  TEXTOID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_size",
+									  INT8OID, -1, 0);
+
+  tupdesc = BlessTupleDesc(tupdesc);
+
+/* Do the main work */
+  fd = open(filename, O_RDONLY);
+  if (fd == -1) {
+    goto error;
+  }
+  if (fstat(fd, &st) == -1) {
+    close(fd);
+    elog(ERROR, "Can not stat object file : %s",
+		 filename);
+    goto error;
+  }
+
+  fdatasync(fd);
+  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
+  values[0] = CStringGetTextDatum(filename);
+  values[1] = Int64GetDatum(st.st_size/pageSize);
+  values[2] = Int64GetDatum((long long int)pageSize);
+
+  memset(nulls, 0, sizeof(nulls));
+
+  tuple = heap_form_tuple(tupdesc, values, nulls);
+
+  //   free things
+  close(fd);
+
+  return HeapTupleGetDatum(tuple);
+
+error:
+  values[0] = CStringGetTextDatum(filename);
+  values[1] = Int64GetDatum(false);
+  values[2] = Int64GetDatum(1);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
