@@ -42,7 +42,7 @@ typedef struct
 Datum pgfincore(PG_FUNCTION_ARGS);
 static Datum pgfincore_file(char *filename, FunctionCallInfo fcinfo);
 static Datum pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo);
-// static Datum pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo);
+static Datum pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo);
 
 /* fincore -
  */
@@ -123,9 +123,9 @@ pgfincore(PG_FUNCTION_ARGS)
 	case 2 : /* FADV_WILLNEED */
 	  result = pgfadv_willneed_file(pathname, fcinfo);
 	break;
-// 	case 3 : /* FADV_DONTNEED */
-// 	  result = pgfadv_dontneed_file(pathname, fcinfo);
-// 	break;
+	case 3 : /* FADV_DONTNEED */
+	  result = pgfadv_dontneed_file(pathname, fcinfo);
+	break;
   }
   /* do when there is no more left */
   if (DatumGetInt64(GetAttributeByName(result, "block_disk", &isnull)) == 0 || isnull) {
@@ -328,3 +328,68 @@ error:
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
 }
+
+/*
+ * pgfadv_dontneed_file
+ */
+static Datum
+pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo) {
+  HeapTuple	tuple;
+  TupleDesc tupdesc;
+  Datum		values[3];
+  bool		nulls[3];
+
+  // for open file
+  int fd;
+  // for stat file
+  struct stat st;
+
+  // OS things
+  size_t pageSize = sysconf(_SC_PAGESIZE);
+//
+  tupdesc = CreateTemplateTupleDesc(3, false);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
+									  TEXTOID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_size",
+									  INT8OID, -1, 0);
+
+  tupdesc = BlessTupleDesc(tupdesc);
+
+/* Do the main work */
+  fd = open(filename, O_RDONLY);
+  if (fd == -1) {
+    goto error;
+  }
+  if (fstat(fd, &st) == -1) {
+    close(fd);
+    elog(ERROR, "Can not stat object file : %s",
+		 filename);
+    goto error;
+  }
+
+  fdatasync(fd);
+  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+  values[0] = CStringGetTextDatum(filename);
+  values[1] = Int64GetDatum(st.st_size/pageSize);
+  values[2] = Int64GetDatum((long long int)pageSize);
+
+  memset(nulls, 0, sizeof(nulls));
+
+  tuple = heap_form_tuple(tupdesc, values, nulls);
+
+  //   free things
+  close(fd);
+
+  return HeapTupleGetDatum(tuple);
+
+error:
+  values[0] = CStringGetTextDatum(filename);
+  values[1] = Int64GetDatum(false);
+  values[2] = Int64GetDatum(1);
+  memset(nulls, 0, sizeof(nulls));
+  tuple = heap_form_tuple(tupdesc, values, nulls);
+  return (HeapTupleGetDatum(tuple));
+}
+

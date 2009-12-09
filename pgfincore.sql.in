@@ -20,3 +20,10 @@ pgfadv_willneed(IN regclass,
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 2)'
 LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadv_dontneed(IN regclass,
+	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 3)'
+LANGUAGE SQL;

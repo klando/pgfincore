@@ -1,11 +1,14 @@
-//2009 Cédric Villemain <cedric@villemain.org>
+10/12/2009 Cédric Villemain <cedric@villemain.org>
 
-  * 0.3.3 - fix copyright 
+  * 0.4.0 - fix copyright
           - fix test is not temp table
+		  - add posix_fadvise_willneed function
+		  - add posix_fadvise_dontneed function
+		  - rewrite main SRF
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
-  * 0.3.2 - fix fctx init 
+  * 0.3.2 - fix fctx init
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 

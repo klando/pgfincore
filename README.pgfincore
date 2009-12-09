@@ -1,10 +1,10 @@
 Install:
-export USE_PGXS=1 ; make clean ; make 
+export USE_PGXS=1 ; make clean ; make
 su ; export USE_PGXS=1 ; make install
 
 Create the functions from the sql script (it should be in your contrib directory)
 psql mydb -f pgfincore.sql
- 
+
 Debug:
 set client_min_messages TO debug5;
 
@@ -40,4 +40,33 @@ union all
 Enjoy ;)
 
 
+cedric=# select * from  pgfincore ('a');
+     relpath      | block_disk | block_mem | group_mem
+------------------+------------+-----------+-----------
+ base/16385/16390 |          2 |         2 |         1
+(1 ligne)
+
+cedric=# select * from pgfadv_dontneed ('a');
+     relpath      | block_disk | block_size
+------------------+------------+------------
+ base/16385/16390 |          2 |       4096
+(1 ligne)
+
+cedric=# select * from  pgfincore ('a');
+     relpath      | block_disk | block_mem | group_mem
+------------------+------------+-----------+-----------
+ base/16385/16390 |          2 |         0 |         0
+(1 ligne)
+
+cedric=# select * from pgfadv_willneed ('a');
+     relpath      | block_disk | block_size
+------------------+------------+------------
+ base/16385/16390 |          2 |       4096
+(1 ligne)
+
+cedric=# select * from  pgfincore ('a');
+     relpath      | block_disk | block_mem | group_mem
+------------------+------------+-----------+-----------
+ base/16385/16390 |          2 |         2 |         1
+(1 ligne)
 
