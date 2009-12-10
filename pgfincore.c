@@ -368,7 +368,6 @@ pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo) {
     goto error;
   }
 
-  fdatasync(fd);
   posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(st.st_size/pageSize);
