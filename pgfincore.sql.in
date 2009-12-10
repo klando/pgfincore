@@ -8,7 +8,7 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
-pgfincore(IN regclass,
+pgmincore(IN regclass,
 	  OUT relpath text, OUT block_disk bigint, OUT block_mem bigint, OUT group_mem bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 1)'
@@ -26,4 +26,25 @@ pgfadv_dontneed(IN regclass,
 	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 3)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadv_normal(IN regclass,
+	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 4)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadv_sequential(IN regclass,
+	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 5)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadv_random(IN regclass,
+	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 6)'
 LANGUAGE SQL;

@@ -40,9 +40,11 @@ typedef struct
 } pgfincore_fctx;
 
 Datum pgfincore(PG_FUNCTION_ARGS);
-static Datum pgfincore_file(char *filename, FunctionCallInfo fcinfo);
-static Datum pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo);
-static Datum pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo);
+static Datum pgmincore_file(char *filename,
+							FunctionCallInfo fcinfo);
+static Datum pgfadvise_file(char *filename,
+							int action,
+							FunctionCallInfo fcinfo);
 
 /* fincore -
  */
@@ -118,17 +120,18 @@ pgfincore(PG_FUNCTION_ARGS)
 
   switch (fctx->action) {
 	case 1 : /* MINCORE */
-	  result = pgfincore_file(pathname, fcinfo);
+	  result = pgmincore_file(pathname, fcinfo);
 	break;
-	case 2 : /* FADV_WILLNEED */
-	  result = pgfadv_willneed_file(pathname, fcinfo);
-	break;
-	case 3 : /* FADV_DONTNEED */
-	  result = pgfadv_dontneed_file(pathname, fcinfo);
+	case 2 : /* FADVISE_WILLNEED */
+	case 3 : /* FADVISE_DONTNEED */
+	case 4 : /* POSIX_FADV_NORMAL */
+	case 5 : /* POSIX_FADV_SEQUENTIAL */
+	case 6 : /* POSIX_FADV_RANDOM */
+	  result = pgfadvise_file(pathname, fctx->action, fcinfo);
 	break;
   }
   /* do when there is no more left */
-  if (DatumGetInt64(GetAttributeByName(result, "block_disk", &isnull)) == 0 || isnull) {
+  if (DatumGetInt64(GetAttributeByName((HeapTupleHeader)result, "block_disk", &isnull)) == 0 || isnull) {
 	relation_close(fctx->rel, AccessShareLock);
 	elog(DEBUG3, "last call : %s",
 		 fctx->relationpath);
@@ -142,18 +145,18 @@ pgfincore(PG_FUNCTION_ARGS)
 }
 
 /*
- * pgfincore_file handle the mmaping, mincore process (and access file, etc.)
+ * pgmincore_file handle the mmaping, mincore process (and access file, etc.)
  */
 static Datum
-pgfincore_file(char *filename, FunctionCallInfo fcinfo) {
+pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[4];
   bool		nulls[4];
-  long long int  flag=1;
-  long long int  block_disk = 0;
-  long long int  block_mem  = 0;
-  long long int  group_mem  = 0;
+  int  flag=1;
+  int64  block_disk = 0;
+  int64  block_mem  = 0;
+  int64  group_mem  = 0;
 
   // for open file
   int fd;
@@ -216,8 +219,8 @@ pgfincore_file(char *filename, FunctionCallInfo fcinfo) {
 	  free(vec);
 	  munmap(pa, st.st_size);
 	  close(fd);
-	  elog(ERROR, "mincore(%p, %lld, %p): %s\n",
-			  pa, (long long int)st.st_size, vec, strerror(errno));
+	  elog(ERROR, "mincore(%p, %ld, %p): %s\n",
+			  pa, (int64)st.st_size, vec, strerror(errno));
 	  goto error;
 	}
 
@@ -226,8 +229,8 @@ pgfincore_file(char *filename, FunctionCallInfo fcinfo) {
 	  // block in memory
 	  if (vec[pageIndex] & 1) {
 		block_mem++;
-		elog (DEBUG5, "in memory blocks : %lld / %lld",
-			  (long long int)pageIndex, block_disk);
+		elog (DEBUG5, "in memory blocks : %ld / %ld",
+			  (int64)pageIndex, block_disk);
 		if (flag)
 		  group_mem++;
 		  flag = 0;
@@ -236,7 +239,7 @@ pgfincore_file(char *filename, FunctionCallInfo fcinfo) {
 		flag=1;
 	}
   }
-  elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
+  elog(DEBUG1, "pgfincore %s: %ld of %ld block in linux cache, %ld groups",
 	   filename, block_mem,  block_disk, group_mem);
 
   values[0] = CStringGetTextDatum(filename);
@@ -266,10 +269,10 @@ error:
 }
 
 /*
- * pgfadv_willneed_file
+ * pgfadvise_file
  */
 static Datum
-pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo) {
+pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[3];
@@ -305,10 +308,27 @@ pgfadv_willneed_file(char *filename, FunctionCallInfo fcinfo) {
     goto error;
   }
 
-  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
+  switch (action) {
+	case 2 : /* FADVISE_WILLNEED */
+	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
+	break;
+	case 3 : /* FADVISE_DONTNEED */
+	  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+	break;
+	case 4 : /* POSIX_FADV_NORMAL */
+	  posix_fadvise(fd, 0, 0, POSIX_FADV_NORMAL);
+	break;
+	case 5 : /* POSIX_FADV_SEQUENTIAL */
+	  posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+	break;
+	case 6 : /* POSIX_FADV_RANDOM */
+	  posix_fadvise(fd, 0, 0, POSIX_FADV_RANDOM);
+	break;
+  }
+
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(st.st_size/pageSize);
-  values[2] = Int64GetDatum((long long int)pageSize);
+  values[2] = Int64GetDatum((int64)pageSize);
 
   memset(nulls, 0, sizeof(nulls));
 
@@ -327,67 +347,3 @@ error:
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
 }
-
-/*
- * pgfadv_dontneed_file
- */
-static Datum
-pgfadv_dontneed_file(char *filename, FunctionCallInfo fcinfo) {
-  HeapTuple	tuple;
-  TupleDesc tupdesc;
-  Datum		values[3];
-  bool		nulls[3];
-
-  // for open file
-  int fd;
-  // for stat file
-  struct stat st;
-
-  // OS things
-  size_t pageSize = sysconf(_SC_PAGESIZE);
-//
-  tupdesc = CreateTemplateTupleDesc(3, false);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
-									  TEXTOID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_size",
-									  INT8OID, -1, 0);
-
-  tupdesc = BlessTupleDesc(tupdesc);
-
-/* Do the main work */
-  fd = open(filename, O_RDONLY);
-  if (fd == -1) {
-    goto error;
-  }
-  if (fstat(fd, &st) == -1) {
-    close(fd);
-    elog(ERROR, "Can not stat object file : %s",
-		 filename);
-    goto error;
-  }
-
-  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
-  values[0] = CStringGetTextDatum(filename);
-  values[1] = Int64GetDatum(st.st_size/pageSize);
-  values[2] = Int64GetDatum((long long int)pageSize);
-
-  memset(nulls, 0, sizeof(nulls));
-
-  tuple = heap_form_tuple(tupdesc, values, nulls);
-
-  //   free things
-  close(fd);
-
-  return HeapTupleGetDatum(tuple);
-
-error:
-  values[0] = CStringGetTextDatum(filename);
-  values[1] = Int64GetDatum(false);
-  values[2] = Int64GetDatum(1);
-  memset(nulls, 0, sizeof(nulls));
-  tuple = heap_form_tuple(tupdesc, values, nulls);
-  return (HeapTupleGetDatum(tuple));
-}
-

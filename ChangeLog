@@ -2,8 +2,11 @@
 
   * 0.4.0 - fix copyright
           - fix test is not temp table
-		  - add posix_fadvise_willneed function
-		  - add posix_fadvise_dontneed function
+		  - add posix_fadvise_willneed flag
+		  - add posix_fadvise_dontneed flag
+		  - add posix_fadvise_normal flag
+		  - add posix_fadvise_sequential flag
+		  - add posix_fadvise_random flag
 		  - rewrite main SRF
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
