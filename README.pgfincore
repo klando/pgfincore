@@ -1,14 +1,19 @@
-Install:
+Install
+=======
+
 export USE_PGXS=1 ; make clean ; make
 su ; export USE_PGXS=1 ; make install
 
 Create the functions from the sql script (it should be in your contrib directory)
 psql mydb -f pgfincore.sql
 
-Debug:
+Debug
+=====
+
 set client_min_messages TO debug5;
 
-Use it:
+Use it
+======
 
 cedric=# select * from pgfincore('test');
  relname |      relpath       | block_disk | block_mem | group_mem

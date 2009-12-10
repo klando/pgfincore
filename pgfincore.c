@@ -151,8 +151,8 @@ static Datum
 pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[4];
-  bool		nulls[4];
+  Datum		values[5];
+  bool		nulls[5];
   int  flag=1;
   int64  block_disk = 0;
   int64  block_mem  = 0;
@@ -168,17 +168,19 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
   unsigned char *vec = (unsigned char *)0;
 
   // OS things
-  size_t pageSize = sysconf(_SC_PAGESIZE);
-  register size_t pageIndex;
+  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
+  register int64 pageIndex;
 
-  tupdesc = CreateTemplateTupleDesc(4, false);
+  tupdesc = CreateTemplateTupleDesc(5, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
 									  TEXTOID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",
 									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_mem",
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",
 									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "group_mem",
+  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",
 									  INT8OID, -1, 0);
 
   tupdesc = BlessTupleDesc(tupdesc);
@@ -230,7 +232,7 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
 	  if (vec[pageIndex] & 1) {
 		block_mem++;
 		elog (DEBUG5, "in memory blocks : %ld / %ld",
-			  (int64)pageIndex, block_disk);
+			  pageIndex, block_disk);
 		if (flag)
 		  group_mem++;
 		  flag = 0;
@@ -243,9 +245,10 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
 	   filename, block_mem,  block_disk, group_mem);
 
   values[0] = CStringGetTextDatum(filename);
-  values[1] = Int64GetDatum(block_disk);
-  values[2] = Int64GetDatum(block_mem);
-  values[3] = Int64GetDatum(group_mem);
+  values[1] = Int64GetDatum(pageSize);
+  values[2] = Int64GetDatum(block_disk);
+  values[3] = Int64GetDatum(block_mem);
+  values[4] = Int64GetDatum(group_mem);
 
   memset(nulls, 0, sizeof(nulls));
 
@@ -261,8 +264,9 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
 error:
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(false);
-  values[2] = Int64GetDatum(1);
-  values[3] = Int64GetDatum(2);
+  values[2] = Int64GetDatum(false);
+  values[3] = Int64GetDatum(false);
+  values[4] = Int64GetDatum(false);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
@@ -275,8 +279,8 @@ static Datum
 pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[3];
-  bool		nulls[3];
+  Datum		values[5];
+  bool		nulls[5];
 
   // for open file
   int fd;
@@ -284,14 +288,20 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
   struct stat st;
 
   // OS things
-  size_t pageSize = sysconf(_SC_PAGESIZE);
-//
-  tupdesc = CreateTemplateTupleDesc(3, false);
+  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
+  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
+  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
+
+  tupdesc = CreateTemplateTupleDesc(5, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
 									  TEXTOID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_disk",
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",
 									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_size",
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_cache",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "block_free",
 									  INT8OID, -1, 0);
 
   tupdesc = BlessTupleDesc(tupdesc);
@@ -327,8 +337,10 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
   }
 
   values[0] = CStringGetTextDatum(filename);
-  values[1] = Int64GetDatum(st.st_size/pageSize);
-  values[2] = Int64GetDatum((int64)pageSize);
+  values[1] = Int64GetDatum(pageSize);
+  values[2] = Int64GetDatum(st.st_size/pageSize);
+  values[3] = Int64GetDatum(pageCache);
+  values[4] = Int64GetDatum(pageFree);
 
   memset(nulls, 0, sizeof(nulls));
 
@@ -342,7 +354,9 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
 error:
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(false);
-  values[2] = Int64GetDatum(1);
+  values[2] = Int64GetDatum(false);
+  values[3] = Int64GetDatum(false);
+  values[4] = Int64GetDatum(false);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));

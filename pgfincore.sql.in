@@ -1,50 +1,75 @@
 SET search_path = public;
 
 CREATE OR REPLACE FUNCTION
-pgfincore(IN regclass, IN text, IN int,
-          OUT relpath text, OUT block_disk bigint, OUT block_mem bigint, OUT group_mem bigint)
+pgfincore(IN regclass,
+		  IN text,
+		  IN int)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
 pgmincore(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_mem bigint, OUT group_mem bigint)
+		  OUT relpath text,
+		  OUT block_size bigint,
+		  OUT block_disk bigint,
+		  OUT block_mem bigint,
+		  OUT group_mem bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 1)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
 pgfadv_willneed(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+				OUT relpath text,
+				OUT block_size bigint,
+				OUT block_disk bigint,
+				OUT block_cache bigint,
+				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 2)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
 pgfadv_dontneed(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+				OUT relpath text,
+				OUT block_size bigint,
+				OUT block_disk bigint,
+				OUT block_cache bigint,
+				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 3)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
 pgfadv_normal(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+			  OUT relpath text,
+			  OUT block_size bigint,
+			  OUT block_disk bigint,
+			  OUT block_cache bigint,
+			  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 4)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
 pgfadv_sequential(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+				  OUT relpath text,
+				  OUT block_size bigint,
+				  OUT block_disk bigint,
+				  OUT block_cache bigint,
+				  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 5)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
 pgfadv_random(IN regclass,
-	  OUT relpath text, OUT block_disk bigint, OUT block_size bigint)
+			  OUT relpath text,
+			  OUT block_size bigint,
+			  OUT block_disk bigint,
+			  OUT block_cache bigint,
+			  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 6)'
 LANGUAGE SQL;

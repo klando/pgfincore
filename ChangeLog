@@ -8,6 +8,7 @@
 		  - add posix_fadvise_sequential flag
 		  - add posix_fadvise_random flag
 		  - rewrite main SRF
+		  - improve output (more informations)
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
