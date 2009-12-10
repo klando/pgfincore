@@ -41,44 +41,33 @@ typedef struct
 
 Datum pgsysconf(PG_FUNCTION_ARGS);
 Datum pgfincore(PG_FUNCTION_ARGS);
-static Datum pgmincore_file(char *filename,
-							FunctionCallInfo fcinfo);
-static Datum pgfadvise_file(char *filename,
-							int action,
-							FunctionCallInfo fcinfo);
+static Datum pgmincore_file(char *filename, FunctionCallInfo fcinfo);
+static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
 
-							/*
+/*
  * pgsysconf
  */
 PG_FUNCTION_INFO_V1(pgsysconf);
 Datum
-pgsysconf(PG_FUNCTION_ARGS) {
+pgsysconf(PG_FUNCTION_ARGS)
+{
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[3];
   bool		nulls[3];
 
-  // OS things
-  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
-  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
-
   tupdesc = CreateTemplateTupleDesc(3, false);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_cache",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_free",
-									  INT8OID, -1, 0);
-
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_cache", INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_free",  INT8OID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
-  values[0] = Int64GetDatum(pageSize);
-  values[1] = Int64GetDatum(pageCache);
-  values[2] = Int64GetDatum(pageFree);
+  values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));     /* Page size */
+  values[1] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));   /* total page cache */
+  values[2] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES)); /* free page cache */
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
-
+  elog(DEBUG1, "pgsysconf: page_size %ld bytes, total page cache %ld, free page cache %ld");
   PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
@@ -89,16 +78,16 @@ Datum
 pgfincore(PG_FUNCTION_ARGS)
 {
   FuncCallContext *funcctx;
-  pgfincore_fctx *fctx;
-  char			pathname[MAXPGPATH];
-  Datum result;
-  bool isnull;
+  pgfincore_fctx  *fctx;
+  Datum 		  result;
+  char			  pathname[MAXPGPATH];
+  bool 			  isnull;
 
   /* stuff done only on the first call of the function */
   if (SRF_IS_FIRSTCALL())
   {
 	MemoryContext oldcontext;
-	Oid			  relOid = PG_GETARG_OID(0);
+	Oid			  relOid    = PG_GETARG_OID(0);
 	text		  *forkName = PG_GETARG_TEXT_P(1);
 
 	/* create a function context for cross-call persistence */
@@ -112,34 +101,41 @@ pgfincore(PG_FUNCTION_ARGS)
 	/* allocate memory for user context */
 	fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
 
-	/*
-	* Use fctx to keep track of upper and lower bounds from call to call.
-	* It will also be used to carry over the spare value we get from the
-	* Box-Muller algorithm so that we only actually calculate a new value
-	* every other call.
-	*/
+	/* open the current relation, accessShareLock */
 	fctx->rel = relation_open(relOid, AccessShareLock);
-	if (fctx->rel->rd_istemp || fctx->rel->rd_islocaltemp){
+
+	/* Because temp tables are not in the same directory, we failed, can be fixed  */
+	if (fctx->rel->rd_istemp || fctx->rel->rd_islocaltemp)
+	{
 		relation_close(fctx->rel, AccessShareLock);
-		elog(DEBUG3, "temp table : %s", fctx->relationpath);
+		elog(NOTICE,
+			 "Table %s is a temporary table, actually pgfincore does not work on those relations.",
+			 fctx->relationpath);
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
+
+	/* we get the common part of the filename of each segment of a relation */
 	fctx->relationpath = relpath(fctx->rel->rd_node,
-								 forkname_to_number(text_to_cstring(forkName)));
-	fctx->action = PG_GETARG_INT32(2);;
+								 forkname_to_number( text_to_cstring(forkName) ));
+
+	/* Here we keep track of current action in all calls */
+	fctx->action = PG_GETARG_INT32(2);
+
+	/* segcount is used to get the next segment of the current relation */
 	fctx->segcount = 0;
+
+	/* And finally we keep track of our initialization */
+	elog(DEBUG1, "pgfincore: init done for %s", fctx->relationpath);
 	funcctx->user_fctx = fctx;
-
-	elog(DEBUG3, "1st call : %s",
-		 fctx->relationpath);
-
 	MemoryContextSwitchTo(oldcontext);
   }
 
+  /* After the first call, we recover our context */
   funcctx = SRF_PERCALL_SETUP();
   fctx = funcctx->user_fctx;
 
+  /* I f we are still looking the first segment, relationpath should not be suffixed */
   if (fctx->segcount == 0)
 	snprintf(pathname,
 			 MAXPGPATH,
@@ -152,9 +148,13 @@ pgfincore(PG_FUNCTION_ARGS)
 			 fctx->relationpath,
 			 fctx->segcount);
 
-  elog(DEBUG2, "pathname is %s", pathname);
+  elog(DEBUG1, "pgfincore: about to work with %s", pathname);
 
-  switch (fctx->action) {
+  /*
+  * This function handle several sub-case by the action value switch
+  */
+  switch (fctx->action)
+  {
 	case 1 : /* MINCORE */
 	  result = pgmincore_file(pathname, fcinfo);
 	break;
@@ -163,20 +163,28 @@ pgfincore(PG_FUNCTION_ARGS)
 	case 4 : /* POSIX_FADV_NORMAL */
 	case 5 : /* POSIX_FADV_SEQUENTIAL */
 	case 6 : /* POSIX_FADV_RANDOM */
+	  /* pgfadvise_file handle several flags, thanks to the same action value */
 	  result = pgfadvise_file(pathname, fctx->action, fcinfo);
 	break;
   }
-  /* do when there is no more left */
-  if (DatumGetInt64(GetAttributeByName((HeapTupleHeader)result, "block_disk", &isnull)) == 0 || isnull) {
+
+  /*
+  * When we have work with all segment of the current relation, test success
+  * We exit from the SRF
+  */
+  if (DatumGetInt64(GetAttributeByName((HeapTupleHeader)result, "block_disk", &isnull)) == 0
+	|| isnull )
+  {
 	relation_close(fctx->rel, AccessShareLock);
-	elog(DEBUG3, "last call : %s",
-		 fctx->relationpath);
 	pfree(fctx);
+	elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
 	SRF_RETURN_DONE(funcctx);
   }
 
-/* or send the result */
+  /* prepare the number of the next segment */
   fctx->segcount++;
+
+  /* Ok, return results, and go for next call */
   SRF_RETURN_NEXT(funcctx, result);
 }
 
@@ -312,7 +320,8 @@ error:
  * pgfadvise_file
  */
 static Datum
-pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
+pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
+{
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[5];
@@ -325,36 +334,31 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
 
   // OS things
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
-  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
 
   tupdesc = CreateTemplateTupleDesc(5, false);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
-									  TEXTOID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_cache",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "block_free",
-									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",     TEXTOID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_cache", INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "block_free",  INT8OID, -1, 0);
 
   tupdesc = BlessTupleDesc(tupdesc);
 
 /* Do the main work */
   fd = open(filename, O_RDONLY);
-  if (fd == -1) {
+
+  if (fd == -1)
     goto error;
-  }
-  if (fstat(fd, &st) == -1) {
+
+  if (fstat(fd, &st) == -1)
+  {
     close(fd);
-    elog(ERROR, "Can not stat object file : %s",
-		 filename);
+    elog(ERROR, "Can not stat object file : %s", filename);
     goto error;
   }
 
-  switch (action) {
+  switch (action)
+  {
 	case 2 : /* FADVISE_WILLNEED */
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
 	break;
@@ -375,8 +379,8 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo) {
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(pageSize);
   values[2] = Int64GetDatum(st.st_size/pageSize);
-  values[3] = Int64GetDatum(pageCache);
-  values[4] = Int64GetDatum(pageFree);
+  values[3] = Int64GetDatum( sysconf(_SC_PHYS_PAGES) );   /* total page cache */
+  values[4] = Int64GetDatum( sysconf(_SC_AVPHYS_PAGES) ); /* free page cache */
 
   memset(nulls, 0, sizeof(nulls));
 
