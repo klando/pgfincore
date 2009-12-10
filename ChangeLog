@@ -9,6 +9,7 @@
 		  - add posix_fadvise_random flag
 		  - rewrite main SRF
 		  - improve output (more informations)
+		  - add pgsysconf()
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 

@@ -39,12 +39,48 @@ typedef struct
   char *relationpath;		/* the relation path */
 } pgfincore_fctx;
 
+Datum pgsysconf(PG_FUNCTION_ARGS);
 Datum pgfincore(PG_FUNCTION_ARGS);
 static Datum pgmincore_file(char *filename,
 							FunctionCallInfo fcinfo);
 static Datum pgfadvise_file(char *filename,
 							int action,
 							FunctionCallInfo fcinfo);
+
+							/*
+ * pgsysconf
+ */
+PG_FUNCTION_INFO_V1(pgsysconf);
+Datum
+pgsysconf(PG_FUNCTION_ARGS) {
+  HeapTuple	tuple;
+  TupleDesc tupdesc;
+  Datum		values[3];
+  bool		nulls[3];
+
+  // OS things
+  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
+  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
+  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
+
+  tupdesc = CreateTemplateTupleDesc(3, false);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_cache",
+									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_free",
+									  INT8OID, -1, 0);
+
+  tupdesc = BlessTupleDesc(tupdesc);
+
+  values[0] = Int64GetDatum(pageSize);
+  values[1] = Int64GetDatum(pageCache);
+  values[2] = Int64GetDatum(pageFree);
+
+  tuple = heap_form_tuple(tupdesc, values, nulls);
+
+  PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
+}
 
 /* fincore -
  */

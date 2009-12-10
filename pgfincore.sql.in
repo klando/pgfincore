@@ -1,6 +1,14 @@
 SET search_path = public;
 
 CREATE OR REPLACE FUNCTION
+pgsysconf(OUT block_size bigint,
+		  OUT block_cache bigint,
+		  OUT block_free bigint)
+RETURNS record
+AS 'MODULE_PATHNAME'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass,
 		  IN text,
 		  IN int)
