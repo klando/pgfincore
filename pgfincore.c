@@ -56,18 +56,22 @@ pgsysconf(PG_FUNCTION_ARGS)
   Datum		values[3];
   bool		nulls[3];
 
+  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
+  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
+  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
+
   tupdesc = CreateTemplateTupleDesc(3, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_cache", INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_free",  INT8OID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
-  values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));     /* Page size */
-  values[1] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));   /* total page cache */
-  values[2] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES)); /* free page cache */
+  values[0] = Int64GetDatum(pageSize);  /* Page size */
+  values[1] = Int64GetDatum(pageCache); /* total page cache */
+  values[2] = Int64GetDatum(pageFree);  /* free page cache */
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
-  elog(DEBUG1, "pgsysconf: page_size %ld bytes, total page cache %ld, free page cache %ld");
+  elog(DEBUG1, "pgsysconf: page_size %ld bytes, total page cache %ld, free page cache %ld", values[0], values[1], values[2]);
   PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
