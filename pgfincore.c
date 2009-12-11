@@ -152,7 +152,7 @@ pgfincore(PG_FUNCTION_ARGS)
 			 fctx->relationpath,
 			 fctx->segcount);
 
-  elog(DEBUG1, "pgfincore: about to work with %s", pathname);
+  elog(DEBUG1, "pgfincore: about to work with %s, current action : %d", pathname, fctx->action);
 
   /*
   * This function handle several sub-case by the action value switch
@@ -220,16 +220,11 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
   register int64 pageIndex;
 
   tupdesc = CreateTemplateTupleDesc(5, false);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",
-									  TEXTOID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",
-									  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",
-									  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",    TEXTOID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size", INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk", INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",  INT8OID, -1, 0);
 
   tupdesc = BlessTupleDesc(tupdesc);
 
@@ -364,18 +359,23 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   switch (action)
   {
 	case 2 : /* FADVISE_WILLNEED */
+	  elog(DEBUG1, "pgfadv_willneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
 	break;
 	case 3 : /* FADVISE_DONTNEED */
+	  elog(DEBUG1, "pgfadv_dontneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
 	break;
 	case 4 : /* POSIX_FADV_NORMAL */
+	  elog(DEBUG1, "pgfadv_normal: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_NORMAL);
 	break;
 	case 5 : /* POSIX_FADV_SEQUENTIAL */
+	  elog(DEBUG1, "pgfadv_sequential: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	break;
 	case 6 : /* POSIX_FADV_RANDOM */
+	  elog(DEBUG1, "pgfadv_random: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_RANDOM);
 	break;
   }
