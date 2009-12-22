@@ -1,4 +1,4 @@
-10/12/2009 Cédric Villemain <cedric@villemain.org>
+22/12/2009 Cédric Villemain <cedric@villemain.org>
 
   * 0.4.0 - fix copyright
           - fix test is not temp table
@@ -10,6 +10,7 @@
 		  - rewrite main SRF
 		  - improve output (more informations)
 		  - add pgsysconf()
+		  - add pgmincore_snapshot to write mincore state in a file
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 

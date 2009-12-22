@@ -24,7 +24,18 @@ pgmincore(IN regclass,
 		  OUT block_mem bigint,
 		  OUT group_mem bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 1)'
+AS 'SELECT pgfincore($1, ''main'', 10)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgmincore_snapshot(IN regclass,
+		  OUT relpath text,
+		  OUT block_size bigint,
+		  OUT block_disk bigint,
+		  OUT block_mem bigint,
+		  OUT group_mem bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 11)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
@@ -35,7 +46,7 @@ pgfadv_willneed(IN regclass,
 				OUT block_cache bigint,
 				OUT block_free bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 2)'
+AS 'SELECT pgfincore($1, ''main'', 20)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
@@ -46,7 +57,7 @@ pgfadv_dontneed(IN regclass,
 				OUT block_cache bigint,
 				OUT block_free bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 3)'
+AS 'SELECT pgfincore($1, ''main'', 30)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
@@ -57,7 +68,7 @@ pgfadv_normal(IN regclass,
 			  OUT block_cache bigint,
 			  OUT block_free bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 4)'
+AS 'SELECT pgfincore($1, ''main'', 40)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
@@ -68,7 +79,7 @@ pgfadv_sequential(IN regclass,
 				  OUT block_cache bigint,
 				  OUT block_free bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 5)'
+AS 'SELECT pgfincore($1, ''main'', 50)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
@@ -79,5 +90,5 @@ pgfadv_random(IN regclass,
 			  OUT block_cache bigint,
 			  OUT block_free bigint)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 6)'
+AS 'SELECT pgfincore($1, ''main'', 60)'
 LANGUAGE SQL;

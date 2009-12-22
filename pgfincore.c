@@ -41,7 +41,7 @@ typedef struct
 
 Datum pgsysconf(PG_FUNCTION_ARGS);
 Datum pgfincore(PG_FUNCTION_ARGS);
-static Datum pgmincore_file(char *filename, FunctionCallInfo fcinfo);
+static Datum pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo);
 static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
 
 /*
@@ -159,14 +159,17 @@ pgfincore(PG_FUNCTION_ARGS)
   */
   switch (fctx->action)
   {
-	case 1 : /* MINCORE */
-	  result = pgmincore_file(pathname, fcinfo);
+	case 10 : /* MINCORE */
+	  result = pgmincore_file(pathname, 0, fcinfo);
 	break;
-	case 2 : /* FADVISE_WILLNEED */
-	case 3 : /* FADVISE_DONTNEED */
-	case 4 : /* POSIX_FADV_NORMAL */
-	case 5 : /* POSIX_FADV_SEQUENTIAL */
-	case 6 : /* POSIX_FADV_RANDOM */
+	case 11 : /* MINCORE with snapshot in a file */
+	  result = pgmincore_file(pathname, 1, fcinfo);
+	break;
+	case 20 : /* FADVISE_WILLNEED */
+	case 30 : /* FADVISE_DONTNEED */
+	case 40 : /* POSIX_FADV_NORMAL */
+	case 50 : /* POSIX_FADV_SEQUENTIAL */
+	case 60 : /* POSIX_FADV_RANDOM */
 	  /* pgfadvise_file handle several flags, thanks to the same action value */
 	  result = pgfadvise_file(pathname, fctx->action, fcinfo);
 	break;
@@ -196,7 +199,7 @@ pgfincore(PG_FUNCTION_ARGS)
  * pgmincore_file handle the mmaping, mincore process (and access file, etc.)
  */
 static Datum
-pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
+pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo) {
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[5];
@@ -230,7 +233,7 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
 
 /* Do the main work */
   fd = open(filename, O_RDONLY);
-  if (fd == -1) {
+	  if (fd == -1) {
     goto error;
   }
   if (fstat(fd, &st) == -1) {
@@ -269,8 +272,30 @@ pgmincore_file(char *filename, FunctionCallInfo fcinfo) {
 	  goto error;
 	}
 
+	/*
+	* the data from mincore is fwrite to a file contigous to the relation file
+	* in the PGDATA, suffix : _mincore
+	* FIXME use some postgres internal for that ?
+	*/
+	if (writeStat) {
+	    FILE       *f;
+		int64       count = 0;
+
+		f = fopen(strcat(filename,"_mincore") , "wb");
+		// TODO check the size is correct.
+		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize)/8 , f);
+
+		elog(DEBUG1, "writeStat count : %ld",count);
+
+        if (count != ((st.st_size+pageSize-1)/pageSize)/8)
+            ereport(ERROR,
+                    (errcode_for_file_access(),
+                     errmsg("could not write file \"%s\"_mincore: %m", filename)));
+    	fclose(f);
+    }
+
 	/* handle the results */
-	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
+	  for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
 	  // block in memory
 	  if (vec[pageIndex] & 1) {
 		block_mem++;
@@ -358,23 +383,23 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
 
   switch (action)
   {
-	case 2 : /* FADVISE_WILLNEED */
+	case 20 : /* FADVISE_WILLNEED */
 	  elog(DEBUG1, "pgfadv_willneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
 	break;
-	case 3 : /* FADVISE_DONTNEED */
+	case 30 : /* FADVISE_DONTNEED */
 	  elog(DEBUG1, "pgfadv_dontneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
 	break;
-	case 4 : /* POSIX_FADV_NORMAL */
+	case 40 : /* POSIX_FADV_NORMAL */
 	  elog(DEBUG1, "pgfadv_normal: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_NORMAL);
 	break;
-	case 5 : /* POSIX_FADV_SEQUENTIAL */
+	case 50 : /* POSIX_FADV_SEQUENTIAL */
 	  elog(DEBUG1, "pgfadv_sequential: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	break;
-	case 6 : /* POSIX_FADV_RANDOM */
+	case 60 : /* POSIX_FADV_RANDOM */
 	  elog(DEBUG1, "pgfadv_random: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_RANDOM);
 	break;
