@@ -438,7 +438,6 @@ error:
   values[1] = Int64GetDatum(false);
   values[2] = Int64GetDatum(false);
   values[3] = Int64GetDatum(false);
-  values[4] = Int64GetDatum(false);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
