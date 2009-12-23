@@ -43,6 +43,7 @@ Datum pgsysconf(PG_FUNCTION_ARGS);
 Datum pgfincore(PG_FUNCTION_ARGS);
 static Datum pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo);
 static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
+static int pgfadv_snapshot(char *filename, int fd, int action);
 
 /*
  * pgsysconf
@@ -201,7 +202,8 @@ pgfincore(PG_FUNCTION_ARGS)
  * pgmincore_file handle the mmaping, mincore process (and access file, etc.)
  */
 static Datum
-pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo) {
+pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
+{
   HeapTuple	tuple;
   TupleDesc tupdesc;
   Datum		values[5];
@@ -360,7 +362,7 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   // OS things
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
 
-  tupdesc = CreateTemplateTupleDesc(5, false);
+  tupdesc = CreateTemplateTupleDesc(4, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",     TEXTOID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",  INT8OID, -1, 0);
@@ -389,17 +391,7 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
 	break;
 	case 21 : /* FADVISE_WILLNEED from mincore file */
 	  elog(DEBUG1, "pgfadv_willneed: setting flag from file");
-	  FILE       *f;
-	  int blockNum=0;
-	  unsigned int c;
-
-	  f = fopen(strcat(filename,"_mincore") , "rb");
-	  while ((c = fgetc(f)) != EOF) {
-		  if (c & 01)
-			posix_fadvise(fd, (blockNum*pageSize), pageSize, POSIX_FADV_WILLNEED);
-		  blockNum++;
-	  }
-	  fclose(f);
+	  pgfadv_snapshot(filename, fd, action);
 	break;
 	case 30 : /* FADVISE_DONTNEED */
 	  elog(DEBUG1, "pgfadv_dontneed: setting flag");
@@ -441,4 +433,32 @@ error:
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return (HeapTupleGetDatum(tuple));
+}
+
+/*
+* pgfadv_snapshot
+* to handle work with _mincore files.
+*/
+static int
+pgfadv_snapshot(char *filename, int fd, int action)
+{
+  FILE       *f;
+  int blockNum=0;
+  unsigned int c;
+  // OS things
+  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
+
+  switch (action)
+  {
+	case 21 : /* FADVISE_WILLNEED from mincore file */
+	  f = fopen(strcat(filename,"_mincore") , "rb");
+	  while ((c = fgetc(f)) != EOF) {
+		  if (c & 01)
+			posix_fadvise(fd, (blockNum*pageSize), pageSize, POSIX_FADV_WILLNEED);
+		  blockNum++;
+	  }
+	  fclose(f);
+	break;
+  }
+  return 0;
 }

@@ -42,7 +42,6 @@ pgfadv_willneed(IN regclass,
 				OUT relpath text,
 				OUT block_size bigint,
 				OUT block_disk bigint,
-				OUT block_cache bigint,
 				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 20)'
@@ -53,7 +52,6 @@ pgfadv_willneed_snapshot(IN regclass,
 				OUT relpath text,
 				OUT block_size bigint,
 				OUT block_disk bigint,
-				OUT block_cache bigint,
 				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 21)'
@@ -64,7 +62,6 @@ pgfadv_dontneed(IN regclass,
 				OUT relpath text,
 				OUT block_size bigint,
 				OUT block_disk bigint,
-				OUT block_cache bigint,
 				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 30)'
@@ -75,7 +72,6 @@ pgfadv_normal(IN regclass,
 			  OUT relpath text,
 			  OUT block_size bigint,
 			  OUT block_disk bigint,
-			  OUT block_cache bigint,
 			  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 40)'
@@ -86,7 +82,6 @@ pgfadv_sequential(IN regclass,
 				  OUT relpath text,
 				  OUT block_size bigint,
 				  OUT block_disk bigint,
-				  OUT block_cache bigint,
 				  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 50)'
@@ -97,7 +92,6 @@ pgfadv_random(IN regclass,
 			  OUT relpath text,
 			  OUT block_size bigint,
 			  OUT block_disk bigint,
-			  OUT block_cache bigint,
 			  OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 60)'
