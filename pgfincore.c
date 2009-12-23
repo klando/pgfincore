@@ -296,7 +296,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo) {
     }
 
 	/* handle the results */
-	  for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
+	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
 	  // block in memory
 	  if (vec[pageIndex] & 1) {
 		block_mem++;
