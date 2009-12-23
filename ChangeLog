@@ -11,6 +11,7 @@
 		  - improve output (more informations)
 		  - add pgsysconf()
 		  - add pgmincore_snapshot to write mincore state in a file
+		  - add pgfadv_willneed_snapshot to read mincore state from file
 
 26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 

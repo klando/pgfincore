@@ -349,8 +349,8 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
 {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[5];
-  bool		nulls[5];
+  Datum		values[4];
+  bool		nulls[4];
 
   // for open file
   int fd;
@@ -364,8 +364,7 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",     TEXTOID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_cache", INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 5, "block_free",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_free",  INT8OID, -1, 0);
 
   tupdesc = BlessTupleDesc(tupdesc);
 
@@ -423,8 +422,7 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(pageSize);
   values[2] = Int64GetDatum(st.st_size/pageSize);
-  values[3] = Int64GetDatum( sysconf(_SC_PHYS_PAGES) );   /* total page cache */
-  values[4] = Int64GetDatum( sysconf(_SC_AVPHYS_PAGES) ); /* free page cache */
+  values[3] = Int64GetDatum( sysconf(_SC_AVPHYS_PAGES) ); /* free page cache */
 
   memset(nulls, 0, sizeof(nulls));
 
