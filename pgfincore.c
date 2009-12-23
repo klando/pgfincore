@@ -46,6 +46,10 @@ static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
 
 /*
  * pgsysconf
+ * just output the actual system value for
+ * _SC_PAGESIZE     --> Page Size
+ * _SC_AVPHYS_PAGES --> Free page in memory
+ *
  */
 PG_FUNCTION_INFO_V1(pgsysconf);
 Datum
@@ -53,25 +57,22 @@ pgsysconf(PG_FUNCTION_ARGS)
 {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[3];
-  bool		nulls[3];
+  Datum		values[2];
+  bool		nulls[2];
 
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-  int64 pageCache = sysconf(_SC_PHYS_PAGES); /* total page cache */
-  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page cache */
+  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page in memory */
 
-  tupdesc = CreateTemplateTupleDesc(3, false);
+  tupdesc = CreateTemplateTupleDesc(2, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_cache", INT8OID, -1, 0);
-  TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_free",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
   values[0] = Int64GetDatum(pageSize);  /* Page size */
-  values[1] = Int64GetDatum(pageCache); /* total page cache */
-  values[2] = Int64GetDatum(pageFree);  /* free page cache */
+  values[1] = Int64GetDatum(pageFree);  /* free page cache */
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
-  elog(DEBUG1, "pgsysconf: page_size %ld bytes, total page cache %ld, free page cache %ld", values[0], values[1], values[2]);
+  elog(DEBUG1, "pgsysconf: page_size %ld bytes, free page in memory %ld", values[0], values[1]);
   PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
@@ -166,6 +167,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	  result = pgmincore_file(pathname, 1, fcinfo);
 	break;
 	case 20 : /* FADVISE_WILLNEED */
+	case 21 : /* FADVISE_WILLNEED */
 	case 30 : /* FADVISE_DONTNEED */
 	case 40 : /* POSIX_FADV_NORMAL */
 	case 50 : /* POSIX_FADV_SEQUENTIAL */
@@ -282,12 +284,11 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo) {
 		int64       count = 0;
 
 		f = fopen(strcat(filename,"_mincore") , "wb");
-		// TODO check the size is correct.
-		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize)/8 , f);
+		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , f);
 
 		elog(DEBUG1, "writeStat count : %ld",count);
 
-        if (count != ((st.st_size+pageSize-1)/pageSize)/8)
+        if (count != ((st.st_size+pageSize-1)/pageSize))
             ereport(ERROR,
                     (errcode_for_file_access(),
                      errmsg("could not write file \"%s\"_mincore: %m", filename)));
@@ -386,6 +387,20 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
 	case 20 : /* FADVISE_WILLNEED */
 	  elog(DEBUG1, "pgfadv_willneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
+	break;
+	case 21 : /* FADVISE_WILLNEED from mincore file */
+	  elog(DEBUG1, "pgfadv_willneed: setting flag from file");
+	  FILE       *f;
+	  int blockNum=0;
+	  unsigned int c;
+
+	  f = fopen(strcat(filename,"_mincore") , "rb");
+	  while ((c = fgetc(f)) != EOF) {
+		  if (c & 01)
+			posix_fadvise(fd, (blockNum*pageSize), pageSize, POSIX_FADV_WILLNEED);
+		  blockNum++;
+	  }
+	  fclose(f);
 	break;
 	case 30 : /* FADVISE_DONTNEED */
 	  elog(DEBUG1, "pgfadv_dontneed: setting flag");

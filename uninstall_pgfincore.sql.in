@@ -1,5 +1,15 @@
 SET search_path = public;
 
-DROP FUNCTION pgfincore(regclass, text);
-DROP FUNCTION pgfincore(regclass);
+DROP FUNCTION pgsysconf();
 
+DROP FUNCTION pgfincore(regclass, text, int);
+
+DROP FUNCTION pgmincore(regclass);
+DROP FUNCTION pgmincore_snapshot(regclass);
+
+DROP FUNCTION pgfadv_willneed(regclass);
+DROP FUNCTION pgfadv_willneed_snapshot(regclass);
+DROP FUNCTION pgfadv_dontneed(regclass);
+DROP FUNCTION pgfadv_normal(regclass);
+DROP FUNCTION pgfadv_sequential(regclass);
+DROP FUNCTION pgfadv_random(IN regclass);

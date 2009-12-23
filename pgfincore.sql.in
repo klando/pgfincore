@@ -2,7 +2,6 @@ SET search_path = public;
 
 CREATE OR REPLACE FUNCTION
 pgsysconf(OUT block_size bigint,
-		  OUT block_cache bigint,
 		  OUT block_free bigint)
 RETURNS record
 AS 'MODULE_PATHNAME'
@@ -47,6 +46,17 @@ pgfadv_willneed(IN regclass,
 				OUT block_free bigint)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 20)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadv_willneed_snapshot(IN regclass,
+				OUT relpath text,
+				OUT block_size bigint,
+				OUT block_disk bigint,
+				OUT block_cache bigint,
+				OUT block_free bigint)
+RETURNS setof record
+AS 'SELECT pgfincore($1, ''main'', 21)'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION
