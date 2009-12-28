@@ -141,7 +141,7 @@ pgfincore(PG_FUNCTION_ARGS)
   funcctx = SRF_PERCALL_SETUP();
   fctx = funcctx->user_fctx;
 
-  /* I f we are still looking the first segment, relationpath should not be suffixed */
+  /* If we are still looking the first segment, relationpath should not be suffixed */
   if (fctx->segcount == 0)
 	snprintf(pathname,
 			 MAXPGPATH,
@@ -168,7 +168,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	  result = pgmincore_file(pathname, 1, fcinfo);
 	break;
 	case 20 : /* FADVISE_WILLNEED */
-	case 21 : /* FADVISE_WILLNEED */
+	case 21 : /* FADVISE_WILLNEED from snapshot file*/
 	case 30 : /* FADVISE_DONTNEED */
 	case 40 : /* POSIX_FADV_NORMAL */
 	case 50 : /* POSIX_FADV_SEQUENTIAL */
@@ -237,16 +237,17 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 
 /* Do the main work */
   fd = open(filename, O_RDONLY);
-	  if (fd == -1) {
+  if (fd == -1)
     goto error;
-  }
-  if (fstat(fd, &st) == -1) {
+  if (fstat(fd, &st) == -1)
+  {
     close(fd);
     elog(ERROR, "Can not stat object file : %s",
 		 filename);
     goto error;
   }
-  if (st.st_size != 0) {
+  if (st.st_size != 0)
+  {
 	block_disk = st.st_size/pageSize;
 
 	/* TODO We need to split mmap size to be sure (?) to be able to mmap */
@@ -259,7 +260,8 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	}
 
 	vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
-	if ((void *)0 == vec) {
+	if ((void *)0 == vec)
+	{
 	  munmap(pa, st.st_size);
 	  close(fd);
 	  elog(ERROR, "Can not calloc object file : %s",
@@ -267,7 +269,8 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	  goto error;
 	}
 
-	if (mincore(pa, st.st_size, vec) != 0) {
+	if (mincore(pa, st.st_size, vec) != 0)
+	{
 	  free(vec);
 	  munmap(pa, st.st_size);
 	  close(fd);
@@ -281,7 +284,8 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	* in the PGDATA, suffix : _mincore
 	* FIXME use some postgres internal for that ?
 	*/
-	if (writeStat) {
+	if (writeStat)
+	{
 	    FILE       *f;
 		int64       count = 0;
 
@@ -298,15 +302,17 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
     }
 
 	/* handle the results */
-	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++) {
+	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++)
+	{
 	  // block in memory
-	  if (vec[pageIndex] & 1) {
+	  if (vec[pageIndex] & 1)
+	  {
 		block_mem++;
 		elog (DEBUG5, "in memory blocks : %ld / %ld",
 			  pageIndex, block_disk);
 		if (flag)
 		  group_mem++;
-		  flag = 0;
+		flag = 0;
 	  }
 	  else
 		flag=1;
@@ -452,7 +458,8 @@ pgfadv_snapshot(char *filename, int fd, int action)
   {
 	case 21 : /* FADVISE_WILLNEED from mincore file */
 	  f = fopen(strcat(filename,"_mincore") , "rb");
-	  while ((c = fgetc(f)) != EOF) {
+	  while ((c = fgetc(f)) != EOF)
+	  {
 		  if (c & 01)
 			posix_fadvise(fd, (blockNum*pageSize), pageSize, POSIX_FADV_WILLNEED);
 		  blockNum++;
