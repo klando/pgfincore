@@ -463,6 +463,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
   int blockNum = 0;
   unsigned int c;
   unsigned int count = 0;
+  unsigned int gcount = 0;
   /*
   * We handle the effective_io_concurrency...
   */
@@ -481,6 +482,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		  if (c & 01)
 		  {
 			count++;
+			gcount++;
 			if (count == effective_io_concurrency)
 			{
 			  posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
@@ -491,7 +493,8 @@ pgfadv_snapshot(char *filename, int fd, int action)
 	  if (count)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 	  fclose(f);
+	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", gcount, filename);
 	break;
   }
-  return 0;
+  return gcount;
 }
