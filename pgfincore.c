@@ -31,6 +31,12 @@ PG_MODULE_MAGIC;
 #endif
 /* } */
 
+/*
+*
+* pgfincore_fctx structure is needed
+* to keep track of relation path, segment number and action.
+*
+*/
 typedef struct
 {
   int action;				/* the action  fincore, fadvise...*/
@@ -77,8 +83,13 @@ pgsysconf(PG_FUNCTION_ARGS)
   PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
-/* fincore -
- */
+/*
+*
+* pgfincore is a function that handle the process to have a sharelock on the relation
+* and to walk the segments.
+* for each segment it call the appropriate function depending on 'action' parameter
+*
+*/
 PG_FUNCTION_INFO_V1(pgfincore);
 Datum
 pgfincore(PG_FUNCTION_ARGS)
@@ -162,14 +173,12 @@ pgfincore(PG_FUNCTION_ARGS)
   switch (fctx->action)
   {
 	case 10 : /* MINCORE */
-	  result = pgmincore_file(pathname, 0, fcinfo);
-	break;
 	case 11 : /* MINCORE with snapshot in a file */
-	  result = pgmincore_file(pathname, 1, fcinfo);
+	  result = pgmincore_file(pathname, fctx->action, fcinfo);
 	break;
-	case 20 : /* FADVISE_WILLNEED */
-	case 21 : /* FADVISE_WILLNEED from snapshot file*/
-	case 30 : /* FADVISE_DONTNEED */
+	case 20 : /* POSIX_FADV_WILLNEED */
+	case 21 : /* POSIX_FADV_WILLNEED from snapshot file*/
+	case 30 : /* POSIX_FADV_DONTNEED */
 	case 40 : /* POSIX_FADV_NORMAL */
 	case 50 : /* POSIX_FADV_SEQUENTIAL */
 	case 60 : /* POSIX_FADV_RANDOM */
@@ -284,7 +293,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	* in the PGDATA, suffix : _mincore
 	* FIXME use some postgres internal for that ?
 	*/
-	if (writeStat)
+	if (writeStat == 11)
 	{
 	    FILE       *f;
 		int64       count = 0;
@@ -442,15 +451,23 @@ error:
 }
 
 /*
-* pgfadv_snapshot
-* to handle work with _mincore files.
+*
+* pgfadv_snapshot to handle work with _mincore files.
+* it is actually used for loading block from disk to buffer cache
+*
 */
 static int
 pgfadv_snapshot(char *filename, int fd, int action)
 {
   FILE       *f;
-  int blockNum=0;
+  int blockNum = 0;
   unsigned int c;
+  unsigned int count = 0;
+  /*
+  * We handle the effective_io_concurrency...
+  */
+  unsigned int effective_io_concurrency = 2;
+
   // OS things
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
 
@@ -460,10 +477,19 @@ pgfadv_snapshot(char *filename, int fd, int action)
 	  f = fopen(strcat(filename,"_mincore") , "rb");
 	  while ((c = fgetc(f)) != EOF)
 	  {
-		  if (c & 01)
-			posix_fadvise(fd, (blockNum*pageSize), pageSize, POSIX_FADV_WILLNEED);
 		  blockNum++;
+		  if (c & 01)
+		  {
+			count++;
+			if (count == effective_io_concurrency)
+			{
+			  posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
+			  count=0;
+			}
+		  }
 	  }
+	  if (count)
+		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 	  fclose(f);
 	break;
   }
