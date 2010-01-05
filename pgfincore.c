@@ -39,7 +39,7 @@ PG_MODULE_MAGIC;
 */
 typedef struct
 {
-  int action;				/* the action  fincore, fadvise...*/
+  int action;				/* the action  mincore, fadvise...*/
   Relation rel;				/* the relation */
   unsigned int segcount;	/* the segment current number */
   char *relationpath;		/* the relation path */
@@ -67,16 +67,13 @@ pgsysconf(PG_FUNCTION_ARGS)
   Datum		values[2];
   bool		nulls[2];
 
-  int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-  int64 pageFree  = sysconf(_SC_AVPHYS_PAGES); /* free page in memory */
-
   tupdesc = CreateTemplateTupleDesc(2, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
-  values[0] = Int64GetDatum(pageSize);  /* Page size */
-  values[1] = Int64GetDatum(pageFree);  /* free page cache */
+  values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));  /* Page size */
+  values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));  /* free page in memory */
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
   elog(DEBUG1, "pgsysconf: page_size %ld bytes, free page in memory %ld", values[0], values[1]);
@@ -241,13 +238,16 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk", INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",  INT8OID, -1, 0);
-
   tupdesc = BlessTupleDesc(tupdesc);
 
 /* Do the main work */
+  /* 
+  * Open, fstat file
+  */
   fd = open(filename, O_RDONLY);
   if (fd == -1)
     goto error;
+
   if (fstat(fd, &st) == -1)
   {
     close(fd);
@@ -255,8 +255,14 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 		 filename);
     goto error;
   }
+
+  /*
+  * if file ok 
+  * then process
+  */
   if (st.st_size != 0)
   {
+	/* number of block in the current file */
 	block_disk = st.st_size/pageSize;
 
 	/* TODO We need to split mmap size to be sure (?) to be able to mmap */
@@ -268,6 +274,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	  goto error;
 	}
 
+	/* Prepare our vector containing all blocks information */
 	vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
 	if ((void *)0 == vec)
 	{
@@ -278,6 +285,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	  goto error;
 	}
 
+	/* Affect vec with mincore */
 	if (mincore(pa, st.st_size, vec) != 0)
 	{
 	  free(vec);
@@ -319,6 +327,8 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 		block_mem++;
 		elog (DEBUG5, "in memory blocks : %ld / %ld",
 			  pageIndex, block_disk);
+
+		/* we flag to detect contigous blocks in the same state */
 		if (flag)
 		  group_mem++;
 		flag = 0;
@@ -382,10 +392,12 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_free",  INT8OID, -1, 0);
-
   tupdesc = BlessTupleDesc(tupdesc);
 
 /* Do the main work */
+  /* Open, fstat file
+  *
+  */
   fd = open(filename, O_RDONLY);
 
   if (fd == -1)
@@ -398,28 +410,36 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
     goto error;
   }
 
+  /*
+  * apply relevant function 
+  */
   switch (action)
   {
 	case 20 : /* FADVISE_WILLNEED */
 	  elog(DEBUG1, "pgfadv_willneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
 	break;
+
 	case 21 : /* FADVISE_WILLNEED from mincore file */
 	  elog(DEBUG1, "pgfadv_willneed: setting flag from file");
 	  pgfadv_snapshot(filename, fd, action);
 	break;
+
 	case 30 : /* FADVISE_DONTNEED */
 	  elog(DEBUG1, "pgfadv_dontneed: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
 	break;
+
 	case 40 : /* POSIX_FADV_NORMAL */
 	  elog(DEBUG1, "pgfadv_normal: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_NORMAL);
 	break;
+
 	case 50 : /* POSIX_FADV_SEQUENTIAL */
 	  elog(DEBUG1, "pgfadv_sequential: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	break;
+
 	case 60 : /* POSIX_FADV_RANDOM */
 	  elog(DEBUG1, "pgfadv_random: setting flag");
 	  posix_fadvise(fd, 0, 0, POSIX_FADV_RANDOM);
@@ -467,7 +487,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
   /*
   * We handle the effective_io_concurrency...
   */
-  unsigned int effective_io_concurrency = 2;
+  unsigned int effective_io_concurrency = 1;
 
   // OS things
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
@@ -475,14 +495,23 @@ pgfadv_snapshot(char *filename, int fd, int action)
   switch (action)
   {
 	case 21 : /* FADVISE_WILLNEED from mincore file */
+	  /* Open _mincore file */
 	  f = fopen(strcat(filename,"_mincore") , "rb");
+
+	  /* for each bit we read */
 	  while ((c = fgetc(f)) != EOF)
 	  {
 		  blockNum++;
+
+		  /*  Is this bit set ? */
 		  if (c & 01)
 		  {
 			count++;
 			gcount++;
+
+			/* We are going to claim as much blocks as effective_io_concurrency
+			* and call once fadvise
+			*/
 			if (count == effective_io_concurrency)
 			{
 			  posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
@@ -490,11 +519,15 @@ pgfadv_snapshot(char *filename, int fd, int action)
 			}
 		  }
 	  }
+
+	  /* We perhaps have some remaining blocks to claim */
 	  if (count)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
+
 	  fclose(f);
 	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", gcount, filename);
 	break;
   }
+
   return gcount;
 }

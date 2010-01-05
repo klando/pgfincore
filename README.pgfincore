@@ -1,3 +1,38 @@
+Features
+=========
+
+PgFincore is a set of functions to manage blocks in memory.
+Each Table or Index is truncated in segment of (usually) 1GB, and each segment
+is truncated in block in filesystem.
+
+Those tools let you record which disk block from a table are in the buffer cache 
+of the operating system, and write the result to a file.
+Then using this file, it is possible to restore the buffer cache state for each 
+block of the relation.
+
+It is usefull on server (not postgresql, but hardware ) restart : it fill the 
+buffer cache with the blocks that were in buffer cache *before* shutdown. So 
+first executed queries in postgresql are not slow down because of extra I/O.
+
+Each functions are call with a table or index name (or oid) as a parameter and 
+walk each segment of the relation.
+
+Pgmincore will return information on the number of blocks per segment wich are
+actually in the buffer cache of the operating system. It also provide the
+amount of contigous blocks in memory. (a big number is probably the 
+representation of a heavy random scan segment, and a low number a seqscan or a
+small segment)
+The function pgmincore_snapshot push this information to a file.
+
+Pgfadv_willneed_snapshot is then used to reload blocks in the buffer cache of 
+the operating system.
+
+All other functions are used to set a posix_fadvise flag on the entire relation 
+(each segment). The more usefull are probably WILLNEED and DONTNEED wich push
+and pop from buffer cache respectively.
+
+man 2 posix_fadvise for more information. 
+
 Install
 =======
 
@@ -74,4 +109,5 @@ cedric=# select * from  pgfincore ('a');
 ------------------+------------+-----------+-----------
  base/16385/16390 |          2 |         2 |         1
 (1 ligne)
+
 

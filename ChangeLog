@@ -1,4 +1,4 @@
-22/12/2009 Cédric Villemain <cedric@villemain.org>
+01/05/2010 Cédric Villemain <cedric@villemain.org>
 
   * 0.4.0 - fix copyright
           - fix test is not temp table
@@ -13,22 +13,22 @@
 		  - add pgmincore_snapshot to write mincore state in a file
 		  - add pgfadv_willneed_snapshot to read mincore state from file
 
-26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+10/26/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.3.2 - fix fctx init
 
-26/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+10/26/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.3.1 - fix Makefile without PGXS
 		  - fix install doc in README
 
-12/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+08/12/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.3 - pgfincore now return a set of record
 		- relname, relpath, block_disk, block_mem, group_mem
 		- this version can only be build againt a postgresql > 8.3 /!\
 
-10/08/2009 Cédric Villemain <cedric.villemain@dalibo.com>
+08/10/2009 Cédric Villemain <cedric.villemain@dalibo.com>
 
   * 0.2.1 - fix munmap call error
 
