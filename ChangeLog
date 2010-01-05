@@ -1,7 +1,6 @@
 01/05/2010 Cédric Villemain <cedric@villemain.org>
 
-  * 0.4.0 - fix copyright
-          - fix test is not temp table
+  * 0.4.0 - fix test is not temp table
 		  - add posix_fadvise_willneed flag
 		  - add posix_fadvise_dontneed flag
 		  - add posix_fadvise_normal flag
@@ -9,6 +8,7 @@
 		  - add posix_fadvise_random flag
 		  - rewrite main SRF
 		  - improve output (more informations)
+		  - fix copyright
 		  - add pgsysconf()
 		  - add pgmincore_snapshot to write mincore state in a file
 		  - add pgfadv_willneed_snapshot to read mincore state from file
