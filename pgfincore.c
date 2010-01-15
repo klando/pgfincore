@@ -25,6 +25,7 @@
 #include "utils/rel.h" /* Relation */
 #include "funcapi.h" /* SRF */
 #include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
+#include "storage/fd.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -241,7 +242,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
   tupdesc = BlessTupleDesc(tupdesc);
 
 /* Do the main work */
-  /* 
+  /*
   * Open, fstat file
   */
   fd = open(filename, O_RDONLY);
@@ -257,7 +258,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
   }
 
   /*
-  * if file ok 
+  * if file ok
   * then process
   */
   if (st.st_size != 0)
@@ -303,19 +304,21 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	*/
 	if (writeStat == 11)
 	{
-	    FILE       *f;
+		char        path[MAXPGPATH];
+	    FILE       *file;
 		int64       count = 0;
 
-		f = fopen(strcat(filename,"_mincore") , "wb");
-		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , f);
+		snprintf(path, sizeof(path), "%s_mincore", filename);
+		file = AllocateFile(path, PG_BINARY_W);
+		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
 
 		elog(DEBUG1, "writeStat count : %ld",count);
 
         if (count != ((st.st_size+pageSize-1)/pageSize))
             ereport(ERROR,
                     (errcode_for_file_access(),
-                     errmsg("could not write file \"%s\"_mincore: %m", filename)));
-    	fclose(f);
+                     errmsg("could not write file \"%s\"_mincore: %m", path)));
+		FreeFile(file);
     }
 
 	/* handle the results */
@@ -411,7 +414,7 @@ pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
   }
 
   /*
-  * apply relevant function 
+  * apply relevant function
   */
   switch (action)
   {
@@ -479,7 +482,8 @@ error:
 static int
 pgfadv_snapshot(char *filename, int fd, int action)
 {
-  FILE       *f;
+  char        path[MAXPGPATH];
+  FILE       *file;
   int blockNum = 0;
   unsigned int c;
   unsigned int count = 0;
@@ -496,10 +500,17 @@ pgfadv_snapshot(char *filename, int fd, int action)
   {
 	case 21 : /* FADVISE_WILLNEED from mincore file */
 	  /* Open _mincore file */
-	  f = fopen(strcat(filename,"_mincore") , "rb");
+	  snprintf(path, sizeof(path), "%s_mincore", filename);
+	  file = AllocateFile(path, PG_BINARY_R);
+	  if (file == NULL)
+	  {
+		  if (errno == ENOENT)
+			  return;				/* ignore not-found error */
+		  goto error;
+	  }
 
 	  /* for each bit we read */
-	  while ((c = fgetc(f)) != EOF)
+	  while ((c = fgetc(file)) != EOF)
 	  {
 		  blockNum++;
 
@@ -524,10 +535,20 @@ pgfadv_snapshot(char *filename, int fd, int action)
 	  if (count)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 
-	  fclose(f);
-	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", gcount, filename);
+	  FreeFile(file);
+	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", gcount, path);
 	break;
   }
 
   return gcount;
+
+error:
+	ereport(LOG,
+			(errcode_for_file_access(),
+			 errmsg("could not read mincore file \"%s\": %m",
+					path)));
+	if (file)
+		FreeFile(file);
+	/* If possible, throw away the bogus file; ignore any error */
+	unlink(path);
 }
