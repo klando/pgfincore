@@ -297,30 +297,6 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	  goto error;
 	}
 
-	/*
-	* the data from mincore is fwrite to a file contigous to the relation file
-	* in the PGDATA, suffix : _mincore
-	* FIXME use some postgres internal for that ?
-	*/
-	if (writeStat == 11)
-	{
-		char        path[MAXPGPATH];
-	    FILE       *file;
-		int64       count = 0;
-
-		snprintf(path, sizeof(path), "%s_mincore", filename);
-		file = AllocateFile(path, PG_BINARY_W);
-		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
-
-		elog(DEBUG1, "writeStat count : %ld",count);
-
-        if (count != ((st.st_size+pageSize-1)/pageSize))
-            ereport(ERROR,
-                    (errcode_for_file_access(),
-                     errmsg("could not write file \"%s\"_mincore: %m", path)));
-		FreeFile(file);
-    }
-
 	/* handle the results */
 	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++)
 	{
@@ -342,6 +318,31 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
   }
   elog(DEBUG1, "pgfincore %s: %ld of %ld block in linux cache, %ld groups",
 	   filename, block_mem,  block_disk, group_mem);
+
+	/*
+	* the data from mincore is fwrite to a file contigous to the relation file
+	* in the PGDATA, suffix : _mincore
+	* FIXME use some postgres internal for that ?
+	*/
+	if (writeStat == 11)
+	{
+		char        path[MAXPGPATH];
+	    FILE       *file;
+		int64       count = 0;
+
+		snprintf(path, sizeof(path), "%s_mincore", filename);
+		file = AllocateFile(path, PG_BINARY_W);
+		fwrite(block_mem, sizeof(block_mem), 1, file);
+		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
+
+		elog(DEBUG1, "writeStat count : %ld", count);
+
+        if (count != ((st.st_size+pageSize-1)/pageSize))
+            ereport(ERROR,
+                    (errcode_for_file_access(),
+                     errmsg("could not write file \"%s\"_mincore: %m", path)));
+		FreeFile(file);
+    }
 
   values[0] = CStringGetTextDatum(filename);
   values[1] = Int64GetDatum(pageSize);
@@ -485,9 +486,9 @@ pgfadv_snapshot(char *filename, int fd, int action)
   char        path[MAXPGPATH];
   FILE       *file;
   int blockNum = 0;
+  int64 block_mem = 0;
   unsigned int c;
   unsigned int count = 0;
-  unsigned int gcount = 0;
   /*
   * We handle the effective_io_concurrency...
   */
@@ -509,6 +510,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		  goto error;
 	  }
 
+	  fread(block_mem, sizeof(block_mem), 1, file);
 	  /* for each bit we read */
 	  while ((c = fgetc(file)) != EOF)
 	  {
@@ -518,7 +520,6 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		  if (c & 01)
 		  {
 			count++;
-			gcount++;
 
 			/* We are going to claim as much blocks as effective_io_concurrency
 			* and call once fadvise
@@ -536,11 +537,11 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 
 	  FreeFile(file);
-	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", gcount, path);
+	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", block_mem, path);
 	break;
   }
 
-  return gcount;
+  return block_mem;
 
 error:
 	ereport(LOG,
