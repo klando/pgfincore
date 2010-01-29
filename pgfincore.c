@@ -48,7 +48,7 @@ typedef struct
 
 Datum pgsysconf(PG_FUNCTION_ARGS);
 Datum pgfincore(PG_FUNCTION_ARGS);
-static Datum pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo);
+static Datum pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo);
 static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
 static int pgfadv_snapshot(char *filename, int fd, int action);
 
@@ -104,6 +104,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext;
 	Oid			  relOid    = PG_GETARG_OID(0);
 	text		  *forkName = PG_GETARG_TEXT_P(1);
+	int			  action	= PG_GETARG_INT32(2);
 
 	/* create a function context for cross-call persistence */
 	funcctx = SRF_FIRSTCALL_INIT();
@@ -135,7 +136,7 @@ pgfincore(PG_FUNCTION_ARGS)
 								 forkname_to_number( text_to_cstring(forkName) ));
 
 	/* Here we keep track of current action in all calls */
-	fctx->action = PG_GETARG_INT32(2);
+	fctx->action = action;
 
 	/* segcount is used to get the next segment of the current relation */
 	fctx->segcount = 0;
@@ -209,7 +210,7 @@ pgfincore(PG_FUNCTION_ARGS)
  * pgmincore_file handle the mmaping, mincore process (and access file, etc.)
  */
 static Datum
-pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
+pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 {
   HeapTuple	tuple;
   TupleDesc tupdesc;
@@ -324,7 +325,7 @@ pgmincore_file(char *filename, int writeStat, FunctionCallInfo fcinfo)
 	* in the PGDATA, suffix : _mincore
 	* FIXME use some postgres internal for that ?
 	*/
-	if (writeStat == 11)
+	if (action == 11)
 	{
 		char        path[MAXPGPATH];
 	    FILE       *file;
