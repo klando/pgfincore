@@ -333,7 +333,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 
 		snprintf(path, sizeof(path), "%s_mincore", filename);
 		file = AllocateFile(path, PG_BINARY_W);
-		fwrite(block_mem, sizeof(block_mem), 1, file);
+		fwrite(&block_mem, sizeof(block_mem), 1, file);
 		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
 
 		elog(DEBUG1, "writeStat count : %ld", count);
@@ -511,7 +511,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		  goto error;
 	  }
 
-	  fread(block_mem, sizeof(block_mem), 1, file);
+	  fread(&block_mem, sizeof(block_mem), 1, file);
 	  /* for each bit we read */
 	  while ((c = fgetc(file)) != EOF)
 	  {
@@ -538,7 +538,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 
 	  FreeFile(file);
-	  elog(DEBUG1, "pgfadv_snapshot: loading %d blocks from relpath %s", block_mem, path);
+	  elog(DEBUG1, "pgfadv_snapshot: loading %ld blocks from relpath %s", block_mem, path);
 	break;
   }
 
