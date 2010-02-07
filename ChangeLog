@@ -1,3 +1,11 @@
+02/05/2010 Cédric Villemain <cedric@villemain.org>
+
+  * 0.4.1 - use AllocateFile instead of fopen
+		  - call PG_GETARG* earlier
+		  - remove useless global counter
+		  - add error handler in pgfadv_snapshot()
+		  - errno to catch the last segment
+
 01/05/2010 Cédric Villemain <cedric@villemain.org>
 
   * 0.4.0 - fix test is not temp table
