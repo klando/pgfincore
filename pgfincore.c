@@ -32,6 +32,9 @@ PG_MODULE_MAGIC;
 #endif
 /* } */
 
+#define PGSYSCONF_COLS  2
+#define PGFINCORE_COLS  5
+
 /*
 *
 * pgfincore_fctx structure is needed
@@ -65,16 +68,17 @@ pgsysconf(PG_FUNCTION_ARGS)
 {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[2];
-  bool		nulls[2];
+  Datum		values[PGSYSCONF_COLS];
+  bool		nulls[PGSYSCONF_COLS];
 
-  tupdesc = CreateTemplateTupleDesc(2, false);
+  tupdesc = CreateTemplateTupleDesc(PGSYSCONF_COLS, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
   values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));  /* Page size */
   values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));  /* free page in memory */
+  memset(nulls, 0, sizeof(nulls));
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
   elog(DEBUG1, "pgsysconf: page_size %ld bytes, free page in memory %ld", values[0], values[1]);
@@ -191,9 +195,9 @@ pgfincore(PG_FUNCTION_ARGS)
   */
   if (errno == ENOENT )
   {
+	elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
 	relation_close(fctx->rel, AccessShareLock);
 	pfree(fctx);
-	elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
 	SRF_RETURN_DONE(funcctx);
   }
 
@@ -212,8 +216,8 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 {
   HeapTuple	tuple;
   TupleDesc tupdesc;
-  Datum		values[5];
-  bool		nulls[5];
+  Datum		values[PGFINCORE_COLS];
+  bool		nulls[PGFINCORE_COLS];
   int  flag=1;
   int64  block_disk = 0;
   int64  block_mem  = 0;
@@ -232,7 +236,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
   register int64 pageIndex;
 
-  tupdesc = CreateTemplateTupleDesc(5, false);
+  tupdesc = CreateTemplateTupleDesc(PGFINCORE_COLS, false);
   TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",    TEXTOID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size", INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk", INT8OID, -1, 0);
@@ -368,7 +372,7 @@ error:
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   errno = ENOENT;
-  return (HeapTupleGetDatum(tuple));
+  return HeapTupleGetDatum(tuple);
 }
 
 /*
@@ -492,7 +496,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
   /*
   * We handle the effective_io_concurrency...
   */
-  unsigned int effective_io_concurrency = 1;
+  unsigned int effective_io_concurrency = 16;
 
   // OS things
   int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
@@ -552,5 +556,6 @@ error:
 		FreeFile(file);
 	/* If possible, throw away the bogus file; ignore any error */
 	unlink(path);
+	errno = ENOENT;
 	return block_mem;
 }
