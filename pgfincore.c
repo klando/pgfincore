@@ -100,6 +100,7 @@ pgfincore(PG_FUNCTION_ARGS)
   pgfincore_fctx  *fctx;
   Datum 		  result;
   char			  pathname[MAXPGPATH];
+  bool isnull;
 
   /* stuff done only on the first call of the function */
   if (SRF_IS_FIRSTCALL())
@@ -193,7 +194,7 @@ pgfincore(PG_FUNCTION_ARGS)
   * When we have work with all segment of the current relation, test success
   * We exit from the SRF
   */
-  if (errno == ENOENT )
+  if (DatumGetInt64(GetAttributeByName((HeapTupleHeader)result, "block_disk", &isnull)) == 0 || isnull)
   {
 	elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
 	relation_close(fctx->rel, AccessShareLock);
@@ -371,7 +372,6 @@ error:
   values[4] = Int64GetDatum(false);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
-  errno = ENOENT;
   return HeapTupleGetDatum(tuple);
 }
 
@@ -474,7 +474,6 @@ error:
   values[3] = Int64GetDatum(false);
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
-  errno = ENOENT;
   return (HeapTupleGetDatum(tuple));
 }
 
@@ -556,6 +555,5 @@ error:
 		FreeFile(file);
 	/* If possible, throw away the bogus file; ignore any error */
 	unlink(path);
-	errno = ENOENT;
 	return block_mem;
 }
