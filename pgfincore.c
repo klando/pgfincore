@@ -329,7 +329,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	*/
 	if (action == 11)
 	{
-		char        path[MAXPGPATH];
+		char        path[MAXPGPATH+8];
 	    FILE       *file;
 		int64       count = 0;
 
@@ -343,7 +343,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
         if (count != ((st.st_size+pageSize-1)/pageSize))
             ereport(ERROR,
                     (errcode_for_file_access(),
-                     errmsg("could not write file \"%s\"_mincore: %m", path)));
+                     errmsg("could not write file \"%s_mincore\": %m", path)));
 		FreeFile(file);
     }
 
