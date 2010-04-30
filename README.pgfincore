@@ -1,113 +1,278 @@
-Features
-=========
+====== PgFincore ======
 
 PgFincore is a set of functions to manage blocks in memory.
-Each Table or Index is truncated in segment of (usually) 1GB, and each segment
-is truncated in block in filesystem.
 
-Those tools let you record which disk block from a table are in the buffer cache 
-of the operating system, and write the result to a file.
-Then using this file, it is possible to restore the buffer cache state for each 
-block of the relation.
+Each Table or Index is truncated in segment of (usually) 1GB, and each segment is truncated in block in filesystem.
 
-It is usefull on server (not postgresql, but hardware ) restart : it fill the 
-buffer cache with the blocks that were in buffer cache *before* shutdown. So 
-first executed queries in postgresql are not slow down because of extra I/O.
+Those functions let you know which and how many disk block from a relation are in the buffer cache of the operating system, and eventually write the result to a file. Then using this file, it is possible to restore the buffer cache state for each block of the relation.
 
-Each functions are call with a table or index name (or oid) as a parameter and 
+Other functions are used to set a //POSIX_FADVISE// flag on the entire relation (each segment). The more usefull are probably //WILLNEED// and //DONTNEED// which push and pop blocks of each segments of a relation from buffer cache, respectively.
+
+Each functions are call with at least a table name or an index name (or oid) as a parameter and
 walk each segment of the relation.
 
-Pgmincore will return information on the number of blocks per segment wich are
-actually in the buffer cache of the operating system. It also provide the
-amount of contigous blocks in memory. (a big number is probably the 
-representation of a heavy random scan segment, and a low number a seqscan or a
-small segment)
-The function pgmincore_snapshot push this information to a file.
+===== Download =====
 
-Pgfadv_willneed_snapshot is then used to reload blocks in the buffer cache of 
-the operating system.
+You can grab the latest code with git : 
 
-All other functions are used to set a posix_fadvise flag on the entire relation 
-(each segment). The more usefull are probably WILLNEED and DONTNEED wich push
-and pop from buffer cache respectively.
+   git clone git://git.postgresql.org/git/pgfincore.git
 
-man 2 posix_fadvise for more information. 
+Or [[http://git.postgresql.org/gitweb?p=pgfincore.git;a=tree|browse it]]
 
-Install
-=======
+And the project is on pgfoundry : [[http://pgfoundry.org/projects/pgfincore|PgFincore]]
 
-export USE_PGXS=1 ; make clean ; make
-su ; export USE_PGXS=1 ; make install
+===== Install =====
 
-Create the functions from the sql script (it should be in your contrib directory)
-psql mydb -f pgfincore.sql
+First, make stage : 
 
-Debug
-=====
+  USE_PGXS=1 make clean
+  USE_PGXS=1 make
+  su
+  USE_PGXS=1 make install
 
-set client_min_messages TO debug5;
+Then, create the functions from the sql script (it should be in your contrib directory) :
 
-Use it
-======
+  psql mydb -f pgfincore.sql
 
-cedric=# select * from pgfincore('test');
- relname |      relpath       | block_disk | block_mem | group_mem
----------+--------------------+------------+-----------+-----------
- test    | base/16987/26245   |     262144 |         0 |         0
- test    | base/16987/26245.1 |       8090 |         0 |         0
-cedric=# select * from test limit 10000;
-cedric=# select * from pgfincore('test');
- relname |      relpath       | block_disk | block_mem | group_mem
----------+--------------------+------------+-----------+-----------
- test    | base/16987/26245   |     262144 |       426 |         1
- test    | base/16987/26245.1 |       8090 |         0 |         0
+===== Use Cases =====
 
-Or more fun :
+Here are some examples of usage. If you want more details go to [[#Documentation]]
 
-cedric=# with recursive pgclass (reloid,reltoastrelid) as (
- select oid, reltoastrelid from pg_class where relname ='largetable'
-union all
- select t.oid,t.reltoastrelid from pgclass p, pg_class t
- where p.reltoastrelid = t.oid
-) select pgfincore(pgclass.reloid) from pgclass;
-                pgfincore
------------------------------------------
- (largetable,base/16987/83603,2,0,0)
- (pg_toast_83603,base/16987/83606,0,0,0)
+==== Load a table or an index in OS Page Buffer ====
 
+You may want to try to keep a table or an index into the OS Page Buffer, or preload a table before your well know big query is executed (reducing the query time).
 
+To do so, just execute the following query: 
 
-Enjoy ;)
+<code sql>
+cedric=# select * from pgfadv_willneed('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     111882
+ base/16384/24598.1 |       4096 |      55318 |      56764
+(2 rows)
 
+Time: 39309,294 ms
+</code>
 
-cedric=# select * from  pgfincore ('a');
-     relpath      | block_disk | block_mem | group_mem
-------------------+------------+-----------+-----------
- base/16385/16390 |          2 |         2 |         1
-(1 ligne)
+//The column "block_size" report that block size of the filesystem is 4KB.//
+//The column "block_disk" is the number of blocks of the specified file.//
+//The column "block_free" is the number of free blocks in memory (for caching).//
 
-cedric=# select * from pgfadv_dontneed ('a');
-     relpath      | block_disk | block_size
-------------------+------------+------------
- base/16385/16390 |          2 |       4096
-(1 ligne)
+==== Snapshot and Restore the OS Page Buffer state of a table or an index (or more) ====
 
-cedric=# select * from  pgfincore ('a');
-     relpath      | block_disk | block_mem | group_mem
-------------------+------------+-----------+-----------
- base/16385/16390 |          2 |         0 |         0
-(1 ligne)
+You may want to restore a table or an index into the OS Page Buffer as it was while you did the snapshot. For example if you have to reboot your server, then when PostgreSQL start up the first queries might be slow because nether PostgreSQL or the OS have cache pages about the relations involved in those first queries.
+Executing a snapshot and a restore is very simple :
 
-cedric=# select * from pgfadv_willneed ('a');
-     relpath      | block_disk | block_size
-------------------+------------+------------
- base/16385/16390 |          2 |       4096
-(1 ligne)
+<code sql>
+-- Snapshot
+cedric=# select * from pgmincore_snapshot('pgbench_accounts');
+      relpath       | block_size | block_disk | block_mem | group_mem 
+--------------------+------------+------------+-----------+-----------
+ base/16384/24598   |       4096 |     262144 |    131745 |         1
+ base/16384/24598.1 |       4096 |      55318 |     55318 |         1
 
-cedric=# select * from  pgfincore ('a');
-     relpath      | block_disk | block_mem | group_mem
-------------------+------------+-----------+-----------
- base/16385/16390 |          2 |         2 |         1
-(1 ligne)
+-- Restore
+cedric=# select * from pgfadv_willneed_snapshot('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     105335
+ base/16384/24598.1 |       4096 |      55318 |      50217
+(2 rows)
+
+Time: 38745,140 ms
+</code>
+
+//The column "block_mem" report how many blocks of the file are in memory.//
+//The column "group_mem" report that all the bloks in memory are contigous (only one group).//
+
+===== Documentation =====
+
+Several functions are actually provided : 
+
+  * pgsysconf
+  * pgmincore
+  * pgmincore_snapshot
+  * pgfadv_dontneed
+  * pgfadv_willneed
+  * pgfadv_willneed_snapshot
+  * pgfadv_normal
+  * pgfadv_random
+  * pgfadv_sequential
+
+==== pgsysconf ====
+
+This function output size of OS blocks, number of free page in the OS Page Buffer.
+
+=== Example ===
+
+<code>
+cedric=# select * from pgsysconf();
+ block_size | block_free
+------------+------------
+       4096 |     417534
+</code>
+
+==== pgmincore ====
+
+This function provide information about the file system cache (buffer cache). 
+
+For the specified relation (can be call with tableoid too) it return :
+
+  * relpath : the relation path 
+  * block_size : the size of one block disk
+  * block_disk : the total number of file system blocks of the relation
+  * block_mem : the total number of file system blocks of the relation in buffer cache. (not the shared buffers from PostgreSQL but the OS cache)
+  * group_mem : the number of groups of adjacent block_mem
+ 
+=== Example ===
+
+<code>
+
+cedric=# select * from pgmincore('pgbench_accounts');
+      relpath       | block_size | block_disk | block_mem | group_mem
+--------------------+------------+------------+-----------+-----------
+ base/16384/16603   |       4096 |     262144 |         0 |         0
+ base/16384/16603.1 |       4096 |      65726 |         0 |         0
+
+cedric=# select * from pgbench_accounts limit 10000;
+
+cedric=# select * from pgmincore('pgbench_accounts');
+      relpath       | block_size | block_disk | block_mem | group_mem
+--------------------+------------+------------+-----------+-----------
+ base/16384/16603   |       4096 |     262144 |       414 |         1
+ base/16384/16603.1 |       4096 |      65726 |         0 |         0
+
+</code>
+
+==== pgmincore_snapshot ====
+
+This function write a file with //_mincore// suffix for each segment of the relation. So it does a snapshot of on memory blocks per segments, allowing a reload with //pgfadv_willneed_snapshot//.
+
+=== Example ===
+
+<code>
+cedric=# select * from pgmincore_snapshot('pgbench_accounts');
+          relpath           | block_size | block_disk | block_mem | group_mem
+----------------------------+------------+------------+-----------+-----------
+ base/16385/49240_mincore   |       4096 |     262144 |         0 |         0
+ base/16385/49240.1_mincore |       4096 |     262144 |    238180 |         2
+ base/16385/49240.2_mincore |       4096 |     262144 |     56478 |         2
+ base/16385/49240.3_mincore |       4096 |      46902 |         0 |         0
+
+# ls -1 /var/lib/postgresql/8.4/main/base/16385/49240*
+49240
+49240.1
+49240.1_mincore
+49240.2
+49240.2_mincore
+49240.3
+49240.3_mincore
+49240_fsm
+49240_mincore
+49240_vm
+</code>
+
+==== pgfadv_* ====
+
+All those function call //fadvise// with the prefix as the flag and return the same columns :
+
+For the specified relation (can be call with tableoid too) it return :
+
+  * relpath : the relation path 
+  * block_size : The size in bytes of the filesystem block.
+  * block_disk : the total number of file system blocks of the relation
+  * block_free : the number of free blocks in memory (for caching).
+
+=== pgfadv_WILLNEED ===
+
+This function set //WILLNEED// flag on the current relation. It means that OS will try to load as much blocks as possible of the relation. Main idea is to preload files on server startup, perhaps using cache hit/miss ratio or most required relations/indexes.
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_willneed('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free
+--------------------+------------+------------+------------
+ base/16384/16603   |       4096 |     262144 |       3744
+ base/16384/16603.1 |       4096 |      65726 |       4236
+</code>
+
+=== pgfadv_WILLNEED_snapshot ===
+
+This function set //WILLNEED// flag on each block which were in memory when pgmincore_snapshot was called .
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_willneed_snapshot('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     105335
+ base/16384/24598.1 |       4096 |      55318 |      50217
+</code>
+
+=== pgfadv_DONTNEED ===
+
+This function set //DONTNEED// flag on the current relation. It means that OS will first unload blocks of the file if it need to free so memory. Main idea is to unload files when they are not usefull anymore (instead of perhaps more interesting blocks)
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_dontneed('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     178743
+ base/16384/24598.1 |       4096 |      55318 |     234078
+</code>
+
+=== pgfadv_NORMAL ===
+
+This function set //NORMAL// flag on the current relation. 
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_NORMAL('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     233954
+ base/16384/24598.1 |       4096 |      55318 |     233954
+</code>
+
+=== pgfadv_RANDOM ===
+
+This function set //RANDOM// flag on the current relation. 
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_RANDOM('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     234233
+ base/16384/24598.1 |       4096 |      55318 |     234233
+</code>
+
+=== pgfadv_SEQUENTIAL ===
+
+This function set //SEQUENTIAL// flag on the current relation. 
+
+== Example ==
+
+<code>
+cedric=# select * from pgfadv_SEQUENTIAL('pgbench_accounts');
+      relpath       | block_size | block_disk | block_free 
+--------------------+------------+------------+------------
+ base/16384/24598   |       4096 |     262144 |     233985
+ base/16384/24598.1 |       4096 |      55318 |     233985
+</code>
+
+===== Debug =====
+
+You can debug the function with the following error level : //DEBUG1// and //DEBUG5//
+
+  set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
+
 
 
