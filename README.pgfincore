@@ -275,4 +275,3 @@ You can debug the function with the following error level : //DEBUG1// and //DEB
   set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
 
 
-
