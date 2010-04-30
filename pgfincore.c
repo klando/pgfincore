@@ -5,14 +5,12 @@
 */
 
 /* { POSIX stuff */
-#include <errno.h> /* errno */
-#include <fcntl.h> /* fcntl, open */
+#define _XOPEN_SOURCE 600 /* fadvise */
 #include <stdlib.h> /* exit, calloc, free */
 #include <sys/stat.h> /* stat, fstat */
 #include <sys/types.h> /* size_t, mincore */
 #include <unistd.h> /* sysconf, close */
 #include <sys/mman.h> /* mmap, mincore */
-#define _XOPEN_SOURCE 600 /* fadvise */
 #include <fcntl.h>  /* fadvise */
 /* } */
 
@@ -81,7 +79,8 @@ pgsysconf(PG_FUNCTION_ARGS)
   memset(nulls, 0, sizeof(nulls));
 
   tuple = heap_form_tuple(tupdesc, values, nulls);
-  elog(DEBUG1, "pgsysconf: page_size %ld bytes, free page in memory %ld", values[0], values[1]);
+  elog(DEBUG1, "pgsysconf: page_size %lld bytes, free page in memory %lld", 
+				(int64) values[0], (int64) values[1]);
   PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
@@ -98,7 +97,7 @@ pgfincore(PG_FUNCTION_ARGS)
 {
   FuncCallContext *funcctx;
   pgfincore_fctx  *fctx;
-  Datum 		  result;
+  Datum 		  result = (Datum) 0;
   char			  pathname[MAXPGPATH];
   bool isnull;
 
@@ -296,7 +295,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	  free(vec);
 	  munmap(pa, st.st_size);
 	  close(fd);
-	  elog(ERROR, "mincore(%p, %ld, %p): %s\n",
+	  elog(ERROR, "mincore(%p, %lld, %p): %s\n",
 			  pa, (int64)st.st_size, vec, strerror(errno));
 	  goto error;
 	}
@@ -308,7 +307,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	  if (vec[pageIndex] & 1)
 	  {
 		block_mem++;
-		elog (DEBUG5, "in memory blocks : %ld / %ld",
+		elog (DEBUG5, "in memory blocks : %lld / %lld",
 			  pageIndex, block_disk);
 
 		/* we flag to detect contigous blocks in the same state */
@@ -320,7 +319,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 		flag=1;
 	}
   }
-  elog(DEBUG1, "pgfincore %s: %ld of %ld block in linux cache, %ld groups",
+  elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
 	   filename, block_mem,  block_disk, group_mem);
 
 	/*
@@ -339,7 +338,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 		fwrite(&block_mem, sizeof(block_mem), 1, file);
 		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
 
-		elog(DEBUG1, "writeStat count : %ld", count);
+		elog(DEBUG1, "writeStat count : %lld", count);
 
         if (count != ((st.st_size+pageSize-1)/pageSize))
             ereport(ERROR,
@@ -540,7 +539,7 @@ pgfadv_snapshot(char *filename, int fd, int action)
 		posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
 
 	  FreeFile(file);
-	  elog(DEBUG1, "pgfadv_snapshot: loading %ld blocks from relpath %s", block_mem, path);
+	  elog(DEBUG1, "pgfadv_snapshot: loading %lld blocks from relpath %s", block_mem, path);
 	break;
   }
 
