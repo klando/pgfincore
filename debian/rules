@@ -1,0 +1,53 @@
+#!/usr/bin/make -f
+
+include /usr/share/postgresql-common/pgxs_debian_control.mk
+
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+
+SRCDIR = $(CURDIR)
+TARGET = $(CURDIR)/debian/pgfincore-%v
+
+build: debian/control
+
+clean:
+	dh_testdir
+	dh_testroot
+	pg_buildext clean $(SRCDIR) $(TARGET) "$(CFLAGS)"
+	dh_clean 
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_prep 
+	dh_installdirs
+
+	# build all supported version
+	pg_buildext build $(SRCDIR) $(TARGET) "$(CFLAGS)"
+
+	# then install each of them
+	for v in `pg_buildext supported-versions $(SRCDIR)`; do \
+		dh_install -ppostgresql-$$v-pgfincore ;\
+	done
+
+binary-indep: build install
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs
+	dh_installdocs
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install debian/control

@@ -1,0 +1,16 @@
+Source: pgfincore
+Section: database
+Priority: extra
+Maintainer: Dimitri Fontaine <dim@tapoueh.org>
+Build-Depends: debhelper (>= 7), postgresql-server-dev-all, postgresql-server-dev-8.4
+Standards-Version: 3.9.1
+Homepage: http://villemain.org/projects/pgfincore
+
+Package: postgresql-PGVERSION-pgfincore
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, postgresql-PGVERSION
+Description: set of PostgreSQL functions to manage blocks in memory
+ Those functions let you know which and how many disk block from a relation
+ are in the page cache of the operating system, and eventually write the
+ result to a file. Then using this file, it is possible to restore the page
+ cache state for each block of the relation.
