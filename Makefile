@@ -36,7 +36,7 @@ deb:
 	cp $(ORIG) $(ARCHIVE)
 
 	# build the debian package and copy them to ..
-	(cd $(EXPORT) && make -f debian/rules debian/control && debuild)
+	(cd $(EXPORT) && make -f debian/rules debian/control && debuild -us -uc)
 
 	cp $(EXPORT)/debian/control debian
 	find $(DEBDIR)/export -maxdepth 1 -type f -name "*$(PGGVERS)*" -exec cp {} .. \;
