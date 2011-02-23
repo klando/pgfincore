@@ -124,7 +124,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	fctx->rel = relation_open(relOid, AccessShareLock);
 
 	/* Because temp tables are not in the same directory, we failed, can be fixed  */
-	if (fctx->rel->rd_istemp || fctx->rel->rd_islocaltemp)
+	if (RelationUsesTempNamespace(fctx->rel))
 	{
 		relation_close(fctx->rel, AccessShareLock);
 		elog(NOTICE,
@@ -135,7 +135,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	}
 
 	/* we get the common part of the filename of each segment of a relation */
-	fctx->relationpath = relpath(fctx->rel->rd_node,
+	fctx->relationpath = relpathperm(fctx->rel->rd_node,
 								 forkname_to_number( text_to_cstring(forkName) ));
 
 	/* Here we keep track of current action in all calls */
