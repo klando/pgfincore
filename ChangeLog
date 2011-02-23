@@ -1,3 +1,7 @@
+//2011 Cédric Villemain <cedric@villemain.org>
+  * 0.4.2 - Add Debian packaging (Dimitri Fontaine)
+		  - Update to work with PostgreSQL >= 9.1 (Jeff Janes)
+
 04/30/2010 Cédric Villemain <cedric@villemain.org>
 
   * 0.4.1 - use AllocateFile instead of fopen
