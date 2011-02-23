@@ -25,6 +25,16 @@
 #include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 #include "storage/fd.h"
 
+#ifdef PG_VERSION_NUM
+#define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
+#else
+#error "Unknown postgresql version"
+#endif
+
+#if PG_MAJOR_VERSION != 804 && PG_MAJOR_VERSION != 900 && PG_MAJOR_VERSION != 901
+#error "Unsupported postgresql version"
+#endif
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -52,6 +62,27 @@ Datum pgfincore(PG_FUNCTION_ARGS);
 static Datum pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo);
 static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
 static int pgfadv_snapshot(char *filename, int fd, int action);
+
+/*
+ * We need to add some handler to keep the code clean
+ * and support 8.4 and 9.0
+ * XXX: and 8.3 ?!
+ */
+#if PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
+
+static char *relpathperm(RelFileNode rnode, ForkNumber forknum);
+static bool RelationUsesTempNamespace(Relation relation);
+
+static char *relpathperm(RelFileNode rnode, ForkNumber forknum)
+{
+    return relpath(rnode, forknum);
+}
+static bool RelationUsesTempNamespace(Relation relation)
+{
+	return (relation->rd_istemp || relation->rd_islocaltemp);
+}
+
+#endif
 
 /*
  * pgsysconf
@@ -128,7 +159,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	{
 		relation_close(fctx->rel, AccessShareLock);
 		elog(NOTICE,
-			 "Table %s is a temporary table, actually pgfincore does not work on those relations.",
+			 "pgfincore does not work with temporary and unlogged tables.",
 			 fctx->relationpath);
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
