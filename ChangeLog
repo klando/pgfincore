@@ -1,5 +1,6 @@
 //2011 Cédric Villemain <cedric@villemain.org>
-  * 0.4.2 - Add Debian packaging (Dimitri Fontaine)
+  * 0.5.0 - Output varbit containing vector information with pgmincore*()
+		  - Add Debian packaging (Dimitri Fontaine)
 		  - Update to work with PostgreSQL >= 9.1 (Jeff Janes)
 
 04/30/2010 Cédric Villemain <cedric@villemain.org>

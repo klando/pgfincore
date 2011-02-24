@@ -21,6 +21,7 @@
 #include "catalog/namespace.h" /* makeRangeVarFromNameList */
 #include "utils/builtins.h" /* textToQualifiedNameList */
 #include "utils/rel.h" /* Relation */
+#include "utils/varbit.h" /* bitstring datatype */
 #include "funcapi.h" /* SRF */
 #include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 #include "storage/fd.h"
@@ -41,7 +42,7 @@ PG_MODULE_MAGIC;
 /* } */
 
 #define PGSYSCONF_COLS  2
-#define PGFINCORE_COLS  5
+#define PGFINCORE_COLS  6
 
 /*
 *
@@ -159,8 +160,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	{
 		relation_close(fctx->rel, AccessShareLock);
 		elog(NOTICE,
-			 "pgfincore does not work with temporary and unlogged tables.",
-			 fctx->relationpath);
+			 "pgfincore does not work with temporary and unlogged tables.");
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
@@ -254,6 +254,11 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
   int64  block_mem  = 0;
   int64  group_mem  = 0;
 
+  VarBit *databit;
+  int len, slen, bitlen;
+  bits8      *r;
+  bits8           x = 0;
+
   // for open file
   int fd;
   // for stat file
@@ -273,6 +278,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
   TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk", INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",  INT8OID, -1, 0);
   TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",  INT8OID, -1, 0);
+  TupleDescInitEntry(tupdesc, (AttrNumber) 6, "data",		VARBITOID, -1, 0);
   tupdesc = BlessTupleDesc(tupdesc);
 
 /* Do the main work */
@@ -331,6 +337,20 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	  goto error;
 	}
 
+	/*
+	 * prepare the bit string
+	 */
+	slen = st.st_size/pageSize;
+	bitlen = slen;
+	len = VARBITTOTALLEN(bitlen);
+	/* set to 0 so that *r is always initialised and string is zero-padded */
+	databit = (VarBit *) palloc0(len);
+	SET_VARSIZE(databit, len);
+	VARBITLEN(databit) = Min(bitlen, bitlen);
+
+	r = VARBITS(databit);
+	x = HIGHBIT;
+
 	/* handle the results */
 	for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++)
 	{
@@ -338,6 +358,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	  if (vec[pageIndex] & 1)
 	  {
 		block_mem++;
+		*r |= x;
 		elog (DEBUG5, "in memory blocks : %lld / %lld",
 			  pageIndex, block_disk);
 
@@ -348,6 +369,13 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	  }
 	  else
 		flag=1;
+
+	  x >>= 1;
+	 if (x == 0)
+	 {
+	   x = HIGHBIT;
+	   r++;
+	 }
 	}
   }
   elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
@@ -383,9 +411,9 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
   values[2] = Int64GetDatum(block_disk);
   values[3] = Int64GetDatum(block_mem);
   values[4] = Int64GetDatum(group_mem);
-
+  values[5] = VarBitPGetDatum(databit);
   memset(nulls, 0, sizeof(nulls));
-
+ 
   tuple = heap_form_tuple(tupdesc, values, nulls);
 
   //   free things
@@ -400,6 +428,7 @@ error:
   values[2] = Int64GetDatum(false);
   values[3] = Int64GetDatum(false);
   values[4] = Int64GetDatum(false);
+  values[5] = VarBitPGetDatum((VarBit *) palloc0(0));
   memset(nulls, 0, sizeof(nulls));
   tuple = heap_form_tuple(tupdesc, values, nulls);
   return HeapTupleGetDatum(tuple);
