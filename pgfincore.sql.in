@@ -8,6 +8,22 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
+pgsysconf_pretty(OUT block_size  text,
+                 OUT free_memory text)
+RETURNS record
+AS '
+select pg_size_pretty(block_size) as block_size,
+       pg_size_pretty(block_free * block_size) as free_memory
+from pgsysconf()'
+LANGUAGE SQL;
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass,
 		  IN text,
 		  IN int)
@@ -98,3 +114,4 @@ pgfadv_random(IN regclass,
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'', 60)'
 LANGUAGE SQL;
+
