@@ -2,7 +2,8 @@
   * 0.5.0 - Output varbit containing vector information with pgmincore*()
 		  - Add Debian packaging (Dimitri Fontaine)
 		  - Update to work with PostgreSQL >= 9.1 (Jeff Janes)
-		  - Add function pgsysconf_pretty()
+          - Add total number of pages of memory with pgsysconf()
+          - Add function pgsysconf_pretty()
 
 04/30/2010 Cédric Villemain <cedric@villemain.org>
 

@@ -41,7 +41,7 @@ PG_MODULE_MAGIC;
 #endif
 /* } */
 
-#define PGSYSCONF_COLS  2
+#define PGSYSCONF_COLS  3
 #define PGFINCORE_COLS  6
 
 /*
@@ -53,7 +53,7 @@ PG_MODULE_MAGIC;
 typedef struct
 {
 	int action;				/* the action  mincore, fadvise...*/
-	Relation rel;				/* the relation */
+	Relation rel;			/* the relation */
 	unsigned int segcount;	/* the segment current number */
 	char *relationpath;		/* the relation path */
 } pgfincore_fctx;
@@ -103,16 +103,18 @@ pgsysconf(PG_FUNCTION_ARGS)
 
 	tupdesc = CreateTemplateTupleDesc(PGSYSCONF_COLS, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 3, "total_blocks",  INT8OID, -1, 0);
 	tupdesc = BlessTupleDesc(tupdesc);
 
 	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));  /* Page size */
-	values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));  /* free page in memory */
+    values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));  /* free page in memory */
+    values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));  /* total memory */
 	memset(nulls, 0, sizeof(nulls));
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
-	elog(DEBUG1, "pgsysconf: page_size %lld bytes, free page in memory %lld",
-	     (int64) values[0], (int64) values[1]);
+	elog(DEBUG1, "pgsysconf: page_size %lld bytes, free page in memory %lld, total memory pages %lld",
+	     (int64) values[0], (int64) values[1], (int64) values[2]);
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
