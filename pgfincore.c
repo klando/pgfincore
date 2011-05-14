@@ -1,11 +1,12 @@
 /*
 *  PgFincore
-*  This project let you see what objects are in the FS cache memory
-*  Copyright (C) 2009 Cédric Villemain
+*  This project let you see and mainpulate objects in the FS page cache
+*  Copyright (C) 2009-2011 Cédric Villemain
 */
 
 /* { POSIX stuff */
 #define _XOPEN_SOURCE 600 /* fadvise */
+
 #include <stdlib.h> /* exit, calloc, free */
 #include <sys/stat.h> /* stat, fstat */
 #include <sys/types.h> /* size_t, mincore */
@@ -90,6 +91,7 @@ static bool RelationUsesTempNamespace(Relation relation)
  * just output the actual system value for
  * _SC_PAGESIZE     --> Page Size
  * _SC_AVPHYS_PAGES --> Free page in memory
+ * _SC_PHYS_PAGES   --> Total memory
  *
  */
 PG_FUNCTION_INFO_V1(pgsysconf);
@@ -97,34 +99,38 @@ Datum
 pgsysconf(PG_FUNCTION_ARGS)
 {
 	HeapTuple	tuple;
-	TupleDesc tupdesc;
+	TupleDesc	tupdesc;
 	Datum		values[PGSYSCONF_COLS];
 	bool		nulls[PGSYSCONF_COLS];
 
 	tupdesc = CreateTemplateTupleDesc(PGSYSCONF_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "block_size",  INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_free",  INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 3, "total_blocks",  INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "os_page_size",   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_pages_free",  INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "os_total_pages", INT8OID, -1, 0);
 	tupdesc = BlessTupleDesc(tupdesc);
 
-	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));  /* Page size */
-    values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));  /* free page in memory */
-    values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));  /* total memory */
-	memset(nulls, 0, sizeof(nulls));
+	/* Page size */
+	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
 
+	/* free page in memory */
+	values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));
+
+	/* total memory */
+	values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));
+
+	memset(nulls, 0, sizeof(nulls));
 	tuple = heap_form_tuple(tupdesc, values, nulls);
-	elog(DEBUG1, "pgsysconf: page_size %lld bytes, free page in memory %lld, total memory pages %lld",
-	     (int64) values[0], (int64) values[1], (int64) values[2]);
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
 /*
-*
-* pgfincore is a function that handle the process to have a sharelock on the relation
-* and to walk the segments.
-* for each segment it call the appropriate function depending on 'action' parameter
-*
-*/
+ *
+ * pgfincore is a function that handle the process to have a sharelock
+ * on the relation and to walk the segments.
+ * for each segment it call the appropriate function depending on 'action'
+ * parameter
+ *
+ */
 PG_FUNCTION_INFO_V1(pgfincore);
 Datum
 pgfincore(PG_FUNCTION_ARGS)

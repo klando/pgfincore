@@ -1,22 +1,25 @@
 SET search_path = public;
 
+--
+-- SYSCONF
+--
 CREATE OR REPLACE FUNCTION
-pgsysconf(OUT block_size   bigint,
-          OUT block_free   bigint,
-          OUT total_blocks bigint)
+pgsysconf(OUT os_page_size   bigint,
+          OUT os_pages_free  bigint,
+          OUT os_total_pages bigint)
 RETURNS record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
-pgsysconf_pretty(OUT block_size   text,
-                 OUT free_memory  text,
-                 OUT total_memory text)
+pgsysconf_pretty(OUT os_page_size   text,
+                 OUT os_pages_free  text,
+                 OUT os_total_pages text)
 RETURNS record
 AS '
-select pg_size_pretty(block_size) as block_size,
-       pg_size_pretty(block_free * block_size) as free_memory,
-       pg_size_pretty(total_blocks * block_size) as total_memory
+select pg_size_pretty(os_page_size) as os_page_size,
+       pg_size_pretty(os_pages_free * os_page_size) as os_pages_free,
+       pg_size_pretty(os_total_pages * os_page_size) as os_total_pages
 from pgsysconf()'
 LANGUAGE SQL;
 
