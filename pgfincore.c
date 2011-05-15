@@ -47,8 +47,14 @@ PG_MODULE_MAGIC;
 #define PGFADVISE_LOADER_COLS	5
 #define PGFINCORE_COLS  		7
 
+#define PGF_WILLNEED	10
+#define PGF_DONTNEED	20
+#define PGF_NORMAL		30
+#define PGF_SEQUENTIAL	40
+#define PGF_RANDOM		50
+
 /*
- * pgfadvise structure is needed
+ * pgfadvise_fctx structure is needed
  * to keep track of relation path, segment number, ...
  */
 typedef struct
@@ -62,7 +68,7 @@ typedef struct
 
 /*
  * pgfincore_fctx structure is needed
- * to keep track of relation path, segment number and action.
+ * to keep track of relation path, segment number, ...
  */
 typedef struct
 {
@@ -184,31 +190,31 @@ pgfadvise_file(char *filename, pgfadvise_fctx *fctx)
 	switch (fctx->advice)
 	{
 		/* FADVISE_WILLNEED */
-	case 10 :
+	case PGF_WILLNEED :
 		advice = POSIX_FADV_WILLNEED;
 		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_WILLNEED");
 		break;
 
 		/* FADVISE_DONTNEED */
-	case 20 :
+	case PGF_DONTNEED :
 		advice = POSIX_FADV_DONTNEED;
 		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_DONTNEED");
 		break;
 
 		/* POSIX_FADV_NORMAL */
-	case 30 :
+	case PGF_NORMAL :
 		advice = POSIX_FADV_NORMAL;
 		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_NORMAL");
 		break;
 
 		/* POSIX_FADV_SEQUENTIAL */
-	case 40 :
+	case PGF_SEQUENTIAL :
 		advice = POSIX_FADV_SEQUENTIAL;
 		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_SEQUENTIAL");
 		break;
 
 		/* POSIX_FADV_RANDOM */
-	case 50 :
+	case PGF_RANDOM :
 		advice = POSIX_FADV_RANDOM;
 		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_RANDOM");
 		break;
@@ -391,9 +397,8 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 
 	bits8	*sp;
 	bits8	x;
-	int		i,
-	        k,
-	        bitlen;
+	int		i, k;
+	int		bitlen;
 
 	/*
 	 * we count the action we did
