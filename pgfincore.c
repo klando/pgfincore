@@ -42,28 +42,48 @@ PG_MODULE_MAGIC;
 #endif
 /* } */
 
-#define PGSYSCONF_COLS  3
-#define PGFINCORE_COLS  6
+#define PGSYSCONF_COLS  		3
+#define PGFADVISE_COLS			4
+#define PGFADVISE_LOADER_COLS	5
+#define PGFINCORE_COLS  		7
 
 /*
-*
-* pgfincore_fctx structure is needed
-* to keep track of relation path, segment number and action.
-*
-*/
+ * pgfadvise structure is needed
+ * to keep track of relation path, segment number, ...
+ */
 typedef struct
 {
-	int action;				/* the action  mincore, fadvise...*/
-	Relation rel;			/* the relation */
-	unsigned int segcount;	/* the segment current number */
-	char *relationpath;		/* the relation path */
+	int64			filesize;
+	int				advice;			/* the posix_fadvise advice */
+	Relation		rel;			/* the relation */
+	unsigned int	segcount;		/* the segment current number */
+	char 			*relationpath;	/* the relation path */
+} pgfadvise_fctx;
+
+/*
+ * pgfincore_fctx structure is needed
+ * to keep track of relation path, segment number and action.
+ */
+typedef struct
+{
+	int64			rel_os_pages;
+	int64			pages_mem;
+	int64			group_mem;
+	VarBit			*databit;
+	Relation 		rel;			/* the relation */
+	unsigned int	segcount;		/* the segment current number */
+	char			*relationpath;	/* the relation path */
 } pgfincore_fctx;
 
+
 Datum pgsysconf(PG_FUNCTION_ARGS);
-Datum pgfincore(PG_FUNCTION_ARGS);
-static Datum pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo);
-static Datum pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo);
-static int pgfadv_snapshot(char *filename, int fd, int action);
+
+Datum 		pgfadvise(PG_FUNCTION_ARGS);
+static int	pgfadvise_file(char *filename, pgfadvise_fctx *fctx);
+Datum pgfadvise_loader(PG_FUNCTION_ARGS);
+
+Datum		pgfincore(PG_FUNCTION_ARGS);
+static int	pgfincore_file(char *filename, pgfincore_fctx *fctx);
 
 /*
  * We need to add some handler to keep the code clean
@@ -124,22 +144,119 @@ pgsysconf(PG_FUNCTION_ARGS)
 }
 
 /*
- *
- * pgfincore is a function that handle the process to have a sharelock
- * on the relation and to walk the segments.
- * for each segment it call the appropriate function depending on 'action'
- * parameter
- *
+ * pgfadvise_file
  */
-PG_FUNCTION_INFO_V1(pgfincore);
+static int
+pgfadvise_file(char *filename, pgfadvise_fctx *fctx)
+{
+	/*
+	 * We work directly with the file
+	 * we don't use the postgresql file handler
+	 */
+	struct stat	st;
+	int			fd;
+	int			advice;
+
+	/*
+	 * Open and fstat file
+	 * fd will be provided to posix_fadvise
+	 * if there is no file, just return 1, it is expected to leave the SRF
+	 */
+	fd = open(filename, O_RDONLY);
+	if (fd == -1)
+		return 1;
+	if (fstat(fd, &st) == -1)
+	{
+		close(fd);
+		elog(ERROR, "Can not stat object file : %s", filename);
+		return 2;
+	}
+
+	/*
+	 * the file size is used in the SRF to output the number of pages used by
+	 * the segment
+	 */
+	fctx->filesize = st.st_size;
+
+	/*
+	* apply relevant function on the file descriptor
+	*/
+	switch (fctx->advice)
+	{
+		/* FADVISE_WILLNEED */
+	case 10 :
+		advice = POSIX_FADV_WILLNEED;
+		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_WILLNEED");
+		break;
+
+		/* FADVISE_DONTNEED */
+	case 20 :
+		advice = POSIX_FADV_DONTNEED;
+		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_DONTNEED");
+		break;
+
+		/* POSIX_FADV_NORMAL */
+	case 30 :
+		advice = POSIX_FADV_NORMAL;
+		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_NORMAL");
+		break;
+
+		/* POSIX_FADV_SEQUENTIAL */
+	case 40 :
+		advice = POSIX_FADV_SEQUENTIAL;
+		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_SEQUENTIAL");
+		break;
+
+		/* POSIX_FADV_RANDOM */
+	case 50 :
+		advice = POSIX_FADV_RANDOM;
+		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_RANDOM");
+		break;
+	}
+	posix_fadvise(fd, 0, 0, advice);
+
+	//   free things
+	close(fd);
+
+	return 0;
+}
+
+/*
+ * pgfadvise is a function that handle the process to have a sharelock
+ * on the relation and to walk the segments.
+ * for each segment it call the posix_fadvise with the required flag
+ * parameter
+ */
+PG_FUNCTION_INFO_V1(pgfadvise);
 Datum
-pgfincore(PG_FUNCTION_ARGS)
+pgfadvise(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
-	pgfincore_fctx  *fctx;
-	Datum 		  result = (Datum) 0;
-	char			  pathname[MAXPGPATH];
-	bool isnull;
+	pgfadvise_fctx  *fctx;
+
+	int 			result;
+	char			filename[MAXPGPATH];
+
+	/*
+	 * OS Page size and Free pages
+	 */
+	int64 pageSize	= sysconf(_SC_PAGESIZE);
+	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
+
+	/*
+	 * Postgresql stuff to return a tuple
+	 */
+	HeapTuple	tuple;
+	TupleDesc	tupdesc;
+	Datum		values[PGFADVISE_COLS];
+	bool		nulls[PGFADVISE_COLS];
+
+	tupdesc = CreateTemplateTupleDesc(PGFADVISE_COLS, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",			TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",		INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "rel_os_pages",		INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "os_pages_free",	INT8OID, -1, 0);
+	tupdesc = BlessTupleDesc(tupdesc);
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
@@ -147,7 +264,7 @@ pgfincore(PG_FUNCTION_ARGS)
 		MemoryContext oldcontext;
 		Oid			  relOid    = PG_GETARG_OID(0);
 		text		  *forkName = PG_GETARG_TEXT_P(1);
-		int			  action	= PG_GETARG_INT32(2);
+		int			  advice	= PG_GETARG_INT32(2);
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -158,17 +275,21 @@ pgfincore(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
+		fctx = (pgfadvise_fctx *) palloc(sizeof(pgfadvise_fctx));
 
 		/* open the current relation, accessShareLock */
+		// TODO use try_relation_open instead ?
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
-		/* Because temp tables are not in the same directory, we failed, can be fixed  */
+		/*
+		 * Because temp tables are not in the same directory, we fail
+		 * XXX: can be fixed
+		 */
 		if (RelationUsesTempNamespace(fctx->rel))
 		{
 			relation_close(fctx->rel, AccessShareLock);
 			elog(NOTICE,
-			     "pgfincore does not work with temporary and unlogged tables.");
+			     "pgfadvise does not work with temporary tables.");
 			pfree(fctx);
 			SRF_RETURN_DONE(funcctx);
 		}
@@ -178,13 +299,13 @@ pgfincore(PG_FUNCTION_ARGS)
 		                                 forkname_to_number( text_to_cstring(forkName) ));
 
 		/* Here we keep track of current action in all calls */
-		fctx->action = action;
+		fctx->advice = advice;
 
 		/* segcount is used to get the next segment of the current relation */
 		fctx->segcount = 0;
 
 		/* And finally we keep track of our initialization */
-		elog(DEBUG1, "pgfincore: init done for %s", fctx->relationpath);
+		elog(DEBUG1, "pgfadvise: init done for %s", fctx->relationpath);
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -193,116 +314,310 @@ pgfincore(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	fctx = funcctx->user_fctx;
 
-	/* If we are still looking the first segment, relationpath should not be suffixed */
+	/*
+	 * If we are still looking the first segment
+	 * relationpath should not be suffixed
+	 */
 	if (fctx->segcount == 0)
-		snprintf(pathname,
+		snprintf(filename,
 		         MAXPGPATH,
 		         "%s",
 		         fctx->relationpath);
 	else
-		snprintf(pathname,
+		snprintf(filename,
 		         MAXPGPATH,
 		         "%s.%u",
 		         fctx->relationpath,
 		         fctx->segcount);
 
-	elog(DEBUG1, "pgfincore: about to work with %s, current action : %d", pathname, fctx->action);
+	elog(DEBUG1, "pgfadvise: about to work with %s, current advice : %d", filename, fctx->advice);
 
 	/*
-	* This function handle several sub-case by the action value switch
-	*/
-	switch (fctx->action)
-	{
-	case 10 : /* MINCORE */
-	case 11 : /* MINCORE with snapshot in a file */
-		result = pgmincore_file(pathname, fctx->action, fcinfo);
-		break;
-	case 20 : /* POSIX_FADV_WILLNEED */
-	case 21 : /* POSIX_FADV_WILLNEED from snapshot file*/
-	case 30 : /* POSIX_FADV_DONTNEED */
-	case 40 : /* POSIX_FADV_NORMAL */
-	case 50 : /* POSIX_FADV_SEQUENTIAL */
-	case 60 : /* POSIX_FADV_RANDOM */
-		/* pgfadvise_file handle several flags, thanks to the same action value */
-		result = pgfadvise_file(pathname, fctx->action, fcinfo);
-		break;
-	}
+	 * Call posix_fadvise with the handler
+	 */
+	result = pgfadvise_file(filename, fctx);
 
 	/*
-	* When we have work with all segment of the current relation, test success
+	* When we have work with all segments of the current relation
 	* We exit from the SRF
 	*/
-	if (DatumGetInt64(GetAttributeByName((HeapTupleHeader)result, "block_disk", &isnull)) == 0 || isnull)
+	if (result)
 	{
-		elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
+		elog(DEBUG1, "pgfadvise: closing %s", fctx->relationpath);
 		relation_close(fctx->rel, AccessShareLock);
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
 
+
+	/* Filename */
+	values[0] = CStringGetTextDatum( filename );
+	/* os page size */
+	values[1] = Int64GetDatum( pageSize );
+	/* number of pages used by segment */
+	values[2] = Int64GetDatum( (fctx->filesize + pageSize - 1) / pageSize );
+	/* free page cache */
+	values[3] = Int64GetDatum( pagesFree );
+	memset(nulls, 0, sizeof(nulls));
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+
 	/* prepare the number of the next segment */
 	fctx->segcount++;
 
 	/* Ok, return results, and go for next call */
-	SRF_RETURN_NEXT(funcctx, result);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 }
 
 /*
- * pgmincore_file handle the mmaping, mincore process (and access file, etc.)
- */
-static Datum
-pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
+*
+* pgfadv_loader to handle work with varbit map of buffer cache.
+* it is actually used for loading/unloading block to/from buffer cache
+*
+*/
+PG_FUNCTION_INFO_V1(pgfadvise_loader);
+Datum
+pgfadvise_loader(PG_FUNCTION_ARGS)
 {
+	Oid       relOid        = PG_GETARG_OID(0);
+	text      *forkName     = PG_GETARG_TEXT_P(1);
+	int       segmentNumber = PG_GETARG_INT32(2);
+	bool      willneed      = PG_GETARG_BOOL(3);
+	bool      dontneed      = PG_GETARG_BOOL(4);
+	VarBit    *s            = PG_GETARG_VARBIT_P(5);
+
+	Relation  rel;
+	char      *relationpath;
+	char      filename[MAXPGPATH];
+
+	bits8	*sp;
+	bits8	x;
+	int		i,
+	        k,
+	        bitlen;
+
+	/*
+	 * we count the action we did
+	 * both are theorical : we don't know if the page was or not in memory
+	 * when we call posix_fadvise
+	 */
+	int64	pages_loaded	= 0;
+	int64	pages_unloaded	= 0;
+
+	/*
+	 * We work directly with the file
+	 * we don't use the postgresql file handler
+	 */
+	struct stat	st;
+	int			fd;
+
+	/*
+	 * OS things : Page size
+	 */
+	int64 pageSize  = sysconf(_SC_PAGESIZE);
+	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
+
+	/*
+	 * Postgresql stuff to return a tuple
+	 */
 	HeapTuple	tuple;
-	TupleDesc tupdesc;
-	Datum		values[PGFINCORE_COLS];
-	bool		nulls[PGFINCORE_COLS];
-	int  flag=1;
-	int64  block_disk = 0;
-	int64  block_mem  = 0;
-	int64  group_mem  = 0;
+	TupleDesc	tupdesc;
+	Datum		values[PGFADVISE_LOADER_COLS];
+	bool		nulls[PGFADVISE_LOADER_COLS];
 
-	VarBit *databit;
-	int len, slen, bitlen;
-	bits8      *r;
-	bits8           x = 0;
-
-	// for open file
-	int fd;
-	// for stat file
-	struct stat st;
-	// for mmap file
-	void *pa = (char *)0;
-	// for calloc file
-	unsigned char *vec = (unsigned char *)0;
-
-	// OS things
-	int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-	register int64 pageIndex;
-
-	tupdesc = CreateTemplateTupleDesc(PGFINCORE_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",    TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size", INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk", INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_mem",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "data",		VARBITOID, -1, 0);
+	tupdesc = CreateTemplateTupleDesc(PGFADVISE_LOADER_COLS, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",			TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",		INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "os_pages_free",	INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "pages_loaded",		INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "pages_unloaded",	INT8OID, -1, 0);
 	tupdesc = BlessTupleDesc(tupdesc);
 
-	/* Do the main work */
+	/* open the current relation in accessShareLock */
+	rel = relation_open(relOid, AccessShareLock);
+
+	/*
+	 * Because temp tables are not in the same directory, we fail
+	 * XXX: can be fixed
+	 */
+	if (RelationUsesTempNamespace(rel))
+	{
+		relation_close(rel, AccessShareLock);
+		elog(NOTICE,
+		     "pgfincore does not work with temporary tables.");
+		PG_RETURN_VOID();
+	}
+
+	/* we get the common part of the filename of each segment of a relation */
+	relationpath = relpathperm(rel->rd_node,
+	                           forkname_to_number(text_to_cstring(forkName))
+	                          );
+	/*
+	 * If we are looking the first segment,
+	 * relationpath should not be suffixed
+	 */
+	if (segmentNumber == 0)
+		snprintf(filename,
+		         MAXPGPATH,
+		         "%s",
+		         relationpath);
+	else
+		snprintf(filename,
+		         MAXPGPATH,
+		         "%s.%u",
+		         relationpath,
+		         (int) segmentNumber);
+
+	/*
+	 * We don't need the relation anymore
+	 * the only purpose was to get a consistent filename
+	 * (if file disappear, an error is logged)
+	 */
+	relation_close(rel, AccessShareLock);
+
+	/*
+	 * Open, fstat file
+	 */
+	fd = open(filename, O_RDONLY);
+
+	if (fd == -1)
+	{
+		elog(ERROR, "Can not open file: %s", filename);
+		PG_RETURN_VOID();
+	}
+
+	if (fstat(fd, &st) == -1)
+	{
+		close(fd);
+		elog(ERROR, "Can not stat object file : %s", filename);
+		PG_RETURN_VOID();
+	}
+
+	bitlen = VARBITLEN(s);
+	sp = VARBITS(s);
+	for (i = 0; i < bitlen - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
+	{
+		x = *sp;
+		/*  Is this bit set ? */
+		for (k = 0; k < BITS_PER_BYTE; k++)
+		{
+			if (IS_HIGHBIT_SET(x))
+			{
+				if (willneed)
+				{
+					(void) posix_fadvise(fd,
+					                     ((i+k) * pageSize),
+					                     pageSize,
+					                     POSIX_FADV_WILLNEED);
+					pages_loaded++;
+				}
+			}
+			else if (dontneed)
+			{
+				(void) posix_fadvise(fd,
+				                     ((i+k) * pageSize),
+				                     pageSize,
+				                     POSIX_FADV_DONTNEED);
+				pages_unloaded++;
+			}
+
+			x <<= 1;
+		}
+	}
+	/*
+	 * XXX this copy/paste of code to finnish to walk the bits is not pretty
+	 */
+	if (i < bitlen)
+	{
+		/* print the last partial byte */
+		x = *sp;
+		for (k = i; k < bitlen; k++)
+		{
+			if (IS_HIGHBIT_SET(x))
+			{
+				if (willneed)
+				{
+					(void) posix_fadvise(fd,
+					                     (k * pageSize),
+					                     pageSize,
+					                     POSIX_FADV_WILLNEED);
+					pages_loaded++;
+				}
+			}
+			else if (dontneed)
+			{
+				(void) posix_fadvise(fd,
+				                     (k * pageSize),
+				                     pageSize,
+				                     POSIX_FADV_DONTNEED);
+				pages_unloaded++;
+			}
+			x <<= 1;
+		}
+	}
+	close(fd);
+
+	/* Filename */
+	values[0] = CStringGetTextDatum( filename );
+	/* os page size */
+	values[1] = Int64GetDatum( pageSize );
+	/* free page cache */
+	values[2] = Int64GetDatum( pagesFree );
+	/* pages loaded */
+	values[3] = Int64GetDatum( pages_loaded );
+	/* pages unloaded  */
+	values[4] = Int64GetDatum( pages_unloaded );
+	memset(nulls, 0, sizeof(nulls));
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
+}
+
+/*
+ * pgfincore_file handle the mmaping, mincore process (and access file, etc.)
+ */
+static int
+pgfincore_file(char *filename, pgfincore_fctx *fctx)
+{
+	int		flag=1;
+
+	int		len, slen, bitlen;
+	bits8	*r;
+	bits8	x = 0;
+	register int64 pageIndex;
+
+	/*
+	 * We work directly with the file
+	 * we don't use the postgresql file handler
+	 */
+	struct stat	  st;
+	int			  fd;
+	void 		  *pa  = (char *) 0;
+	unsigned char *vec = (unsigned char *) 0;
+
+	/*
+	 * OS Page size
+	 */
+	int64 pageSize  = sysconf(_SC_PAGESIZE);
+
+	/*
+	 * Initialize counters
+	 */
+	fctx->pages_mem = 0;
+	fctx->group_mem = 0;
+	fctx->pages_mem = 0;
+
 	/*
 	* Open, fstat file
 	*/
 	fd = open(filename, O_RDONLY);
 	if (fd == -1)
-		goto error;
+		return 1;
 
 	if (fstat(fd, &st) == -1)
 	{
 		close(fd);
 		elog(ERROR, "Can not stat object file : %s",
 		     filename);
-		goto error;
+		return 2;
 	}
 
 	/*
@@ -311,8 +626,8 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 	*/
 	if (st.st_size != 0)
 	{
-		/* number of block in the current file */
-		block_disk = st.st_size/pageSize;
+		/* number of pages in the current file */
+		fctx->rel_os_pages = (st.st_size+pageSize-1)/pageSize;
 
 		/* TODO We need to split mmap size to be sure (?) to be able to mmap */
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
@@ -321,7 +636,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 			close(fd);
 			elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric@villemain.org with '[pgfincore] ENOMEM' as subject.",
 			     filename, errno, strerror(errno));
-			goto error;
+			return 3;
 		}
 
 		/* Prepare our vector containing all blocks information */
@@ -332,7 +647,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 			close(fd);
 			elog(ERROR, "Can not calloc object file : %s",
 			     filename);
-			goto error;
+			return 4;
 		}
 
 		/* Affect vec with mincore */
@@ -343,7 +658,7 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 			close(fd);
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
 			     pa, (int64)st.st_size, vec, strerror(errno));
-			goto error;
+			return 5;
 		}
 
 		/*
@@ -352,28 +667,31 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 		slen = st.st_size/pageSize;
 		bitlen = slen;
 		len = VARBITTOTALLEN(bitlen);
-		/* set to 0 so that *r is always initialised and string is zero-padded */
-		databit = (VarBit *) palloc0(len);
-		SET_VARSIZE(databit, len);
-		VARBITLEN(databit) = Min(bitlen, bitlen);
+		/*
+		 * set to 0 so that *r is always initialised and string is zero-padded
+		 * XXX: do we need to free that ?
+		 */
+		fctx->databit = (VarBit *) palloc0(len);
+		SET_VARSIZE(fctx->databit, len);
+		VARBITLEN(fctx->databit) = Min(bitlen, bitlen);
 
-		r = VARBITS(databit);
+		r = VARBITS(fctx->databit);
 		x = HIGHBIT;
 
 		/* handle the results */
-		for (pageIndex = 0; pageIndex <= st.st_size/pageSize; pageIndex++)
+		for (pageIndex = 0; pageIndex <= fctx->rel_os_pages; pageIndex++)
 		{
 			// block in memory
 			if (vec[pageIndex] & 1)
 			{
-				block_mem++;
+				fctx->pages_mem++;
 				*r |= x;
 				elog (DEBUG5, "in memory blocks : %lld / %lld",
-				      pageIndex, block_disk);
+				      pageIndex, fctx->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
 				if (flag)
-					group_mem++;
+					fctx->group_mem++;
 				flag = 0;
 			}
 			else
@@ -388,240 +706,153 @@ pgmincore_file(char *filename, int action, FunctionCallInfo fcinfo)
 		}
 	}
 	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
-	     filename, block_mem,  block_disk, group_mem);
+	     filename, fctx->pages_mem,  fctx->rel_os_pages, fctx->group_mem);
 
 	/*
-	* the data from mincore is fwrite to a file contigous to the relation file
-	* in the PGDATA, suffix : _mincore
-	* FIXME use some postgres internal for that ?
-	*/
-	if (action == 11)
-	{
-		char        path[MAXPGPATH+8];
-		FILE       *file;
-		int64       count = 0;
-
-		snprintf(path, sizeof(path), "%s_mincore", filename);
-		file = AllocateFile(path, PG_BINARY_W);
-		fwrite(&block_mem, sizeof(block_mem), 1, file);
-		count = fwrite(vec, 1, ((st.st_size+pageSize-1)/pageSize) , file);
-
-		elog(DEBUG1, "writeStat count : %lld", count);
-
-		if (count != ((st.st_size+pageSize-1)/pageSize))
-			ereport(ERROR,
-			        (errcode_for_file_access(),
-			         errmsg("could not write file \"%s_mincore\": %m", path)));
-		FreeFile(file);
-	}
-
-	values[0] = CStringGetTextDatum(filename);
-	values[1] = Int64GetDatum(pageSize);
-	values[2] = Int64GetDatum(block_disk);
-	values[3] = Int64GetDatum(block_mem);
-	values[4] = Int64GetDatum(group_mem);
-	values[5] = VarBitPGetDatum(databit);
-	memset(nulls, 0, sizeof(nulls));
-
-	tuple = heap_form_tuple(tupdesc, values, nulls);
-
-	//   free things
+	 * free and close
+	 */
 	free(vec);
 	munmap(pa, st.st_size);
 	close(fd);
-	return HeapTupleGetDatum(tuple); /* return filename, block_disk, block_mem, group_mem   */
-
-error:
-	values[0] = CStringGetTextDatum(filename);
-	values[1] = Int64GetDatum(false);
-	values[2] = Int64GetDatum(false);
-	values[3] = Int64GetDatum(false);
-	values[4] = Int64GetDatum(false);
-	values[5] = VarBitPGetDatum((VarBit *) palloc0(0));
-	memset(nulls, 0, sizeof(nulls));
-	tuple = heap_form_tuple(tupdesc, values, nulls);
-	return HeapTupleGetDatum(tuple);
+	return 0;
 }
 
 /*
- * pgfadvise_file
+ * pgfincore is a function that handle the process to have a sharelock
+ * on the relation and to walk the segments.
+ * for each segment it call the appropriate function depending on 'action'
+ * parameter
  */
-static Datum
-pgfadvise_file(char *filename, int action, FunctionCallInfo fcinfo)
+PG_FUNCTION_INFO_V1(pgfincore);
+Datum
+pgfincore(PG_FUNCTION_ARGS)
 {
-	HeapTuple	tuple;
-	TupleDesc tupdesc;
-	Datum		values[4];
-	bool		nulls[4];
+	FuncCallContext *funcctx;
+	pgfincore_fctx  *fctx;
 
-	// for open file
-	int fd;
-	// for stat file
-	struct stat st;
-
-	// OS things
-	int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-
-	tupdesc = CreateTemplateTupleDesc(4, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",     TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "block_size",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "block_disk",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "block_free",  INT8OID, -1, 0);
-	tupdesc = BlessTupleDesc(tupdesc);
-
-	/* Do the main work */
-	/* Open, fstat file
-	*
-	*/
-	fd = open(filename, O_RDONLY);
-
-	if (fd == -1)
-		goto error;
-
-	if (fstat(fd, &st) == -1)
-	{
-		close(fd);
-		elog(ERROR, "Can not stat object file : %s", filename);
-		goto error;
-	}
+	int 			result;
+	char			filename[MAXPGPATH];
 
 	/*
-	* apply relevant function
-	*/
-	switch (action)
+	 * OS Page size and Free pages
+	 */
+	int64 pageSize	= sysconf(_SC_PAGESIZE);
+	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
+
+	/*
+	 * Postgresql stuff to return a tuple
+	 */
+	HeapTuple	tuple;
+	TupleDesc	tupdesc;
+	Datum		values[PGFINCORE_COLS];
+	bool		nulls[PGFINCORE_COLS];
+	tupdesc = CreateTemplateTupleDesc(PGFINCORE_COLS, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",		TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",	INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "rel_os_pages",	INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "pages_mem",	INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",	INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "os_pages_free",INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "data",		  VARBITOID, -1, 0);
+	tupdesc = BlessTupleDesc(tupdesc);
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
 	{
-	case 20 : /* FADVISE_WILLNEED */
-		elog(DEBUG1, "pgfadv_willneed: setting flag");
-		posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED);
-		break;
+		MemoryContext oldcontext;
+		Oid			  relOid    = PG_GETARG_OID(0);
+		text		  *forkName = PG_GETARG_TEXT_P(1);
 
-	case 21 : /* FADVISE_WILLNEED from mincore file */
-		elog(DEBUG1, "pgfadv_willneed: setting flag from file");
-		pgfadv_snapshot(filename, fd, action);
-		break;
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
 
-	case 30 : /* FADVISE_DONTNEED */
-		elog(DEBUG1, "pgfadv_dontneed: setting flag");
-		posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
-		break;
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-	case 40 : /* POSIX_FADV_NORMAL */
-		elog(DEBUG1, "pgfadv_normal: setting flag");
-		posix_fadvise(fd, 0, 0, POSIX_FADV_NORMAL);
-		break;
+		/* allocate memory for user context */
+		fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
 
-	case 50 : /* POSIX_FADV_SEQUENTIAL */
-		elog(DEBUG1, "pgfadv_sequential: setting flag");
-		posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-		break;
+		/* open the current relation, accessShareLock */
+		// TODO use try_relation_open instead ?
+		fctx->rel = relation_open(relOid, AccessShareLock);
 
-	case 60 : /* POSIX_FADV_RANDOM */
-		elog(DEBUG1, "pgfadv_random: setting flag");
-		posix_fadvise(fd, 0, 0, POSIX_FADV_RANDOM);
-		break;
+		/*
+		 * Because temp tables are not in the same directory, we fail
+		 * XXX: can be fixed
+		 */
+		if (RelationUsesTempNamespace(fctx->rel))
+		{
+			relation_close(fctx->rel, AccessShareLock);
+			elog(NOTICE,
+			     "pgfincore does not work with temporary tables.");
+			pfree(fctx);
+			SRF_RETURN_DONE(funcctx);
+		}
+
+		/* we get the common part of the filename of each segment of a relation */
+		fctx->relationpath = relpathperm(fctx->rel->rd_node,
+		                                 forkname_to_number( text_to_cstring(forkName) ));
+
+		/* segcount is used to get the next segment of the current relation */
+		fctx->segcount = 0;
+
+		/* And finally we keep track of our initialization */
+		elog(DEBUG1, "pgfincore: init done for %s", fctx->relationpath);
+		funcctx->user_fctx = fctx;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* After the first call, we recover our context */
+	funcctx = SRF_PERCALL_SETUP();
+	fctx = funcctx->user_fctx;
+
+	/*
+	 * If we are still looking the first segment
+	 * relationpath should not be suffixed
+	 */
+	if (fctx->segcount == 0)
+		snprintf(filename,
+		         MAXPGPATH,
+		         "%s",
+		         fctx->relationpath);
+	else
+		snprintf(filename,
+		         MAXPGPATH,
+		         "%s.%u",
+		         fctx->relationpath,
+		         fctx->segcount);
+
+	elog(DEBUG1, "pgfincore: about to work with %s", filename);
+
+	result = pgfincore_file(filename, fctx);
+
+	/*
+	* When we have work with all segment of the current relation, test success
+	* We exit from the SRF
+	*/
+	if (result)
+	{
+		elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
+		relation_close(fctx->rel, AccessShareLock);
+		pfree(fctx);
+		SRF_RETURN_DONE(funcctx);
 	}
 
 	values[0] = CStringGetTextDatum(filename);
 	values[1] = Int64GetDatum(pageSize);
-	values[2] = Int64GetDatum(st.st_size/pageSize);
-	values[3] = Int64GetDatum( sysconf(_SC_AVPHYS_PAGES) ); /* free page cache */
-
-	memset(nulls, 0, sizeof(nulls));
-
-	tuple = heap_form_tuple(tupdesc, values, nulls);
-
-	//   free things
-	close(fd);
-
-	return HeapTupleGetDatum(tuple);
-
-error:
-	values[0] = CStringGetTextDatum(filename);
-	values[1] = Int64GetDatum(false);
-	values[2] = Int64GetDatum(false);
-	values[3] = Int64GetDatum(false);
+	values[2] = Int64GetDatum(fctx->rel_os_pages);
+	values[3] = Int64GetDatum(fctx->pages_mem);
+	values[4] = Int64GetDatum(fctx->group_mem);
+	values[5] = Int64GetDatum( pagesFree );
+	values[6] = VarBitPGetDatum(fctx->databit);
 	memset(nulls, 0, sizeof(nulls));
 	tuple = heap_form_tuple(tupdesc, values, nulls);
-	return (HeapTupleGetDatum(tuple));
-}
 
-/*
-*
-* pgfadv_snapshot to handle work with _mincore files.
-* it is actually used for loading block from disk to buffer cache
-*
-*/
-static int
-pgfadv_snapshot(char *filename, int fd, int action)
-{
-	char        path[MAXPGPATH];
-	FILE       *file;
-	int blockNum = 0;
-	int64 block_mem = 0;
-	unsigned int c;
-	unsigned int count = 0;
-	/*
-	* We handle the effective_io_concurrency...
-	*/
-	unsigned int effective_io_concurrency = 16;
+	/* prepare the number of the next segment */
+	fctx->segcount++;
 
-	// OS things
-	int64 pageSize  = sysconf(_SC_PAGESIZE); /* Page size */
-
-	switch (action)
-	{
-	case 21 : /* FADVISE_WILLNEED from mincore file */
-		/* Open _mincore file */
-		snprintf(path, sizeof(path), "%s_mincore", filename);
-		file = AllocateFile(path, PG_BINARY_R);
-		if (file == NULL)
-		{
-			if (errno == ENOENT)
-				return block_mem;				/* ignore not-found error */
-			goto error;
-		}
-
-		fread(&block_mem, sizeof(block_mem), 1, file);
-		/* for each bit we read */
-		while ((c = fgetc(file)) != EOF)
-		{
-			blockNum++;
-
-			/*  Is this bit set ? */
-			if (c & 01)
-			{
-				count++;
-
-				/* We are going to claim as much blocks as effective_io_concurrency
-				* and call once fadvise
-				*/
-				if (count == effective_io_concurrency)
-				{
-					posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
-					count=0;
-				}
-			}
-		}
-
-		/* We perhaps have some remaining blocks to claim */
-		if (count)
-			posix_fadvise(fd, ((blockNum-count)*pageSize), count*pageSize, POSIX_FADV_WILLNEED);
-
-		FreeFile(file);
-		elog(DEBUG1, "pgfadv_snapshot: loading %lld blocks from relpath %s", block_mem, path);
-		break;
-	}
-
-	return block_mem;
-
-error:
-	ereport(LOG,
-	        (errcode_for_file_access(),
-	         errmsg("could not read mincore file \"%s\": %m",
-	                path)));
-	if (file)
-		FreeFile(file);
-	/* If possible, throw away the bogus file; ignore any error */
-	unlink(path);
-	return block_mem;
+	/* Ok, return results, and go for next call */
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 }

@@ -1,3 +1,5 @@
+BEGIN;
+
 SET search_path = public;
 
 --
@@ -23,101 +25,106 @@ select pg_size_pretty(os_page_size) as os_page_size,
 from pgsysconf()'
 LANGUAGE SQL;
 
-
-
-
-
-
-
+--
+-- PGFADVISE
+--
 CREATE OR REPLACE FUNCTION
-pgfincore(IN regclass,
-		  IN text,
-		  IN int)
+pgfadvise(IN regclass, IN text, IN int)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
-pgmincore(IN regclass,
+pgfadvise_willneed(IN regclass,
+				   OUT relpath text,
+				   OUT os_page_size bigint,
+				   OUT rel_os_pages bigint,
+				   OUT os_pages_free bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise($1, ''main'', 10)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadvise_dontneed(IN regclass,
+				   OUT relpath text,
+				   OUT os_page_size bigint,
+				   OUT rel_os_pages bigint,
+				   OUT os_pages_free bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise($1, ''main'', 20)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadvise_normal(IN regclass,
+				 OUT relpath text,
+				 OUT os_page_size bigint,
+				 OUT rel_os_pages bigint,
+				 OUT os_pages_free bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise($1, ''main'', 30)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadvise_sequential(IN regclass,
+					 OUT relpath text,
+					 OUT os_page_size bigint,
+					 OUT rel_os_pages bigint,
+					 OUT os_pages_free bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise($1, ''main'', 40)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+pgfadvise_random(IN regclass,
+				 OUT relpath text,
+				 OUT os_page_size bigint,
+				 OUT rel_os_pages bigint,
+				 OUT os_pages_free bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise($1, ''main'', 50)'
+LANGUAGE SQL;
+
+--
+-- PGFADVISE_LOADER
+--
+CREATE OR REPLACE FUNCTION
+pgfadvise_loader(IN regclass, IN text, IN int, IN bool, IN bool, IN varbit)
+RETURNS setof record
+AS 'MODULE_PATHNAME'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION
+pgfadvise_loader(IN regclass, IN int, IN bool, IN bool, IN varbit,
+				 OUT relpath text,
+				 OUT os_page_size bigint,
+				 OUT os_pages_free bigint,
+				 OUT pages_loaded bigint,
+				 OUT pages_unloaded bigint)
+RETURNS setof record
+AS 'SELECT pgfadvise_loader($1, ''main'', $2, $3, $4, $5)'
+LANGUAGE SQL;
+
+--
+-- PGFINCORE
+--
+CREATE OR REPLACE FUNCTION
+pgfincore(IN regclass,
+		  IN text)
+RETURNS setof record
+AS 'MODULE_PATHNAME'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION
+pgfincore(IN regclass,
 		  OUT relpath text,
-		  OUT block_size bigint,
-		  OUT block_disk bigint,
-		  OUT block_mem bigint,
+		  OUT os_page_size bigint,
+		  OUT rel_os_pages bigint,
+		  OUT pages_mem bigint,
 		  OUT group_mem bigint,
+		  OUT os_pages_free bigint,
 		  OUT data      varbit)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 10)'
+AS 'SELECT pgfincore($1, ''main'')'
 LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION
-pgmincore_snapshot(IN regclass,
-		  OUT relpath text,
-		  OUT block_size bigint,
-		  OUT block_disk bigint,
-		  OUT block_mem bigint,
-		  OUT group_mem bigint,
-		  OUT data      varbit)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 11)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_willneed(IN regclass,
-				OUT relpath text,
-				OUT block_size bigint,
-				OUT block_disk bigint,
-				OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 20)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_willneed_snapshot(IN regclass,
-				OUT relpath text,
-				OUT block_size bigint,
-				OUT block_disk bigint,
-				OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 21)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_dontneed(IN regclass,
-				OUT relpath text,
-				OUT block_size bigint,
-				OUT block_disk bigint,
-				OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 30)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_normal(IN regclass,
-			  OUT relpath text,
-			  OUT block_size bigint,
-			  OUT block_disk bigint,
-			  OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 40)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_sequential(IN regclass,
-				  OUT relpath text,
-				  OUT block_size bigint,
-				  OUT block_disk bigint,
-				  OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 50)'
-LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION
-pgfadv_random(IN regclass,
-			  OUT relpath text,
-			  OUT block_size bigint,
-			  OUT block_disk bigint,
-			  OUT block_free bigint)
-RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'', 60)'
-LANGUAGE SQL;
-
+COMMIT;
