@@ -123,11 +123,12 @@ pgsysconf(PG_FUNCTION_ARGS)
 	Datum		values[PGSYSCONF_COLS];
 	bool		nulls[PGSYSCONF_COLS];
 
-	tupdesc = CreateTemplateTupleDesc(PGSYSCONF_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "os_page_size",   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_pages_free",  INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "os_total_pages", INT8OID, -1, 0);
-	tupdesc = BlessTupleDesc(tupdesc);
+	/* initialize nulls array to build the tuple */
+	memset(nulls, 0, sizeof(nulls));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
 
 	/* Page size */
 	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
@@ -138,7 +139,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 	/* total memory */
 	values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));
 
-	memset(nulls, 0, sizeof(nulls));
+	/* Build and return the result tuple. */
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
