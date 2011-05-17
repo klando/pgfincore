@@ -59,12 +59,24 @@ PG_MODULE_MAGIC;
  */
 typedef struct
 {
-	TupleDesc		tupd;			/* the tuple descriptor */
 	int				advice;			/* the posix_fadvise advice */
+	TupleDesc		tupd;			/* the tuple descriptor */
 	Relation		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
 	char 			*relationpath;	/* the relation path */
 } pgfadvise_fctx;
+
+/*
+ * pgfloader structure is needed
+ * to return values
+ */
+typedef struct
+{
+	size_t			pageSize;		/* os page size */
+	size_t			pagesFree;		/* free page cache */
+	size_t			pagesLoaded;	/* pages loaded */
+	size_t			pagesUnloaded;	/* pages unloaded  */
+} pgfloaderStruct;
 
 /*
  * pgfincore_fctx structure is needed
@@ -86,7 +98,11 @@ Datum pgsysconf(PG_FUNCTION_ARGS);
 
 Datum 		pgfadvise(PG_FUNCTION_ARGS);
 static int	pgfadvise_file(char *filename, int advice, size_t *filesize);
-Datum pgfadvise_loader(PG_FUNCTION_ARGS);
+
+Datum		pgfadvise_loader(PG_FUNCTION_ARGS);
+static int	pgfadvise_loader_file(char *filename,
+								  bool willneed, bool dontneed, VarBit *databit,
+								  pgfloaderStruct *pgfloader);
 
 Datum		pgfincore(PG_FUNCTION_ARGS);
 static int	pgfincore_file(char *filename, pgfincore_fctx *fctx);
@@ -134,7 +150,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
+		elog(ERROR, "pgsysconf: return type must be a row type");
 
 	/* Page size */
 	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
@@ -175,7 +191,7 @@ pgfadvise_file(char *filename, int advice, size_t *filesize)
 	if (fstat(fd, &st) == -1)
 	{
 		close(fd);
-		elog(ERROR, "Can not stat object file : %s", filename);
+		elog(ERROR, "pgfadvise: Can not stat object file : %s", filename);
 		return 2;
 	}
 
@@ -294,7 +310,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 
         /* Build a tuple descriptor for our result type */
         if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-            elog(ERROR, "return type must be a row type");
+            elog(ERROR, "pgfadvise: return type must be a row type");
 
 		/* provide the tuple descriptor to the fonction structure */
         fctx->tupd = tupdesc;
@@ -311,7 +327,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 		{
 			relation_close(fctx->rel, AccessShareLock);
 			elog(NOTICE,
-			     "pgfadvise does not work with temporary tables.");
+			     "pgfadvise: does not work with temporary tables.");
 			pfree(fctx);
 			SRF_RETURN_DONE(funcctx);
 		}
@@ -356,7 +372,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 		 filename, fctx->advice);
 
 	/*
-	 * Call posix_fadvise with the handler
+	 * Call posix_fadvise with the advice, returning the filesize
 	 */
 	result = pgfadvise_file(filename, fctx->advice, &filesize);
 
@@ -403,6 +419,128 @@ pgfadvise(PG_FUNCTION_ARGS)
 }
 
 /*
+ * pgfadvise_file
+ */
+static int
+pgfadvise_loader_file(char *filename,
+					  bool willneed, bool dontneed, VarBit *databit,
+					  pgfloaderStruct *pgfloader)
+{
+	bits8	*sp;
+	int		bitlen;
+	bits8	x;
+	int		i, k;
+
+	/*
+	 * We work directly with the file
+	 * we don't use the postgresql file handler
+	 */
+	struct stat	st;
+	int			fd;
+
+	/*
+	 * OS things : Page size
+	 */
+	pgfloader->pageSize = sysconf(_SC_PAGESIZE);
+
+	/*
+	 * we count the action we perform
+	 * both are theorical : we don't know if the page was or not in memory
+	 * when we call posix_fadvise
+	 */
+	pgfloader->pagesLoaded		= 0;
+	pgfloader->pagesUnloaded	= 0;
+
+	/*
+	 * Open and fstat file
+	 * fd will be provided to posix_fadvise
+	 * if there is no file, just return 1, it is expected to leave the SRF
+	 */
+	fd = open(filename, O_RDONLY);
+	if (fd == -1)
+		return 1;
+	if (fstat(fd, &st) == -1)
+	{
+		close(fd);
+		elog(ERROR, "pgfadvise_loader: Can not stat object file: %s", filename);
+		return 2;
+	}
+
+	elog(DEBUG1, "pgfadvise_loader: working on %s", filename);
+
+	bitlen = VARBITLEN(databit);
+	sp = VARBITS(databit);
+	for (i = 0; i < bitlen - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
+	{
+		x = *sp;
+		/*  Is this bit set ? */
+		for (k = 0; k < BITS_PER_BYTE; k++)
+		{
+			if (IS_HIGHBIT_SET(x))
+			{
+				if (willneed)
+				{
+					(void) posix_fadvise(fd,
+					                     ((i+k) * pgfloader->pageSize),
+					                     pgfloader->pageSize,
+					                     POSIX_FADV_WILLNEED);
+					pgfloader->pagesLoaded++;
+				}
+			}
+			else if (dontneed)
+			{
+				(void) posix_fadvise(fd,
+				                     ((i+k) * pgfloader->pageSize),
+				                     pgfloader->pageSize,
+				                     POSIX_FADV_DONTNEED);
+				pgfloader->pagesUnloaded++;
+			}
+
+			x <<= 1;
+		}
+	}
+	/*
+	 * XXX this copy/paste of code to finnish to walk the bits is not pretty
+	 */
+	if (i < bitlen)
+	{
+		/* print the last partial byte */
+		x = *sp;
+		for (k = i; k < bitlen; k++)
+		{
+			if (IS_HIGHBIT_SET(x))
+			{
+				if (willneed)
+				{
+					(void) posix_fadvise(fd,
+					                     (k * pgfloader->pageSize),
+					                     pgfloader->pageSize,
+					                     POSIX_FADV_WILLNEED);
+					pgfloader->pagesLoaded++;
+				}
+			}
+			else if (dontneed)
+			{
+				(void) posix_fadvise(fd,
+				                     (k * pgfloader->pageSize),
+				                     pgfloader->pageSize,
+				                     POSIX_FADV_DONTNEED);
+				pgfloader->pagesUnloaded++;
+			}
+			x <<= 1;
+		}
+	}
+	close(fd);
+
+	/*
+	 * OS things : Pages free
+	 */
+	pgfloader->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+
+	return 0;
+}
+
+/*
 *
 * pgfadv_loader to handle work with varbit map of buffer cache.
 * it is actually used for loading/unloading block to/from buffer cache
@@ -417,37 +555,16 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	int       segmentNumber = PG_GETARG_INT32(2);
 	bool      willneed      = PG_GETARG_BOOL(3);
 	bool      dontneed      = PG_GETARG_BOOL(4);
-	VarBit    *s            = PG_GETARG_VARBIT_P(5);
+	VarBit    *databit		= PG_GETARG_VARBIT_P(5);
+
+	pgfloaderStruct	*pgfloader;
 
 	Relation  rel;
 	char      *relationpath;
 	char      filename[MAXPGPATH];
 
-	bits8	*sp;
-	bits8	x;
-	int		i, k;
-	int		bitlen;
-
-	/*
-	 * we count the action we did
-	 * both are theorical : we don't know if the page was or not in memory
-	 * when we call posix_fadvise
-	 */
-	int64	pages_loaded	= 0;
-	int64	pages_unloaded	= 0;
-
-	/*
-	 * We work directly with the file
-	 * we don't use the postgresql file handler
-	 */
-	struct stat	st;
-	int			fd;
-
-	/*
-	 * OS things : Page size
-	 */
-	int64 pageSize  = sysconf(_SC_PAGESIZE);
-	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
+	/* our return value, 0 for success */
+	int 			result;
 
 	/*
 	 * Postgresql stuff to return a tuple
@@ -457,13 +574,15 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	Datum		values[PGFADVISE_LOADER_COLS];
 	bool		nulls[PGFADVISE_LOADER_COLS];
 
-	tupdesc = CreateTemplateTupleDesc(PGFADVISE_LOADER_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",			TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",		INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "os_pages_free",	INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "pages_loaded",		INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "pages_unloaded",	INT8OID, -1, 0);
-	tupdesc = BlessTupleDesc(tupdesc);
+	/* initialize nulls array to build the tuple */
+	memset(nulls, 0, sizeof(nulls));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* allocate memory for user context */
+	pgfloader = (pgfloaderStruct *) palloc(sizeof(pgfloaderStruct));
 
 	/* open the current relation in accessShareLock */
 	rel = relation_open(relOid, AccessShareLock);
@@ -508,98 +627,24 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	relation_close(rel, AccessShareLock);
 
 	/*
-	 * Open, fstat file
+	 * Call pgfadvise_loader with the varbit
 	 */
-	fd = open(filename, O_RDONLY);
-
-	if (fd == -1)
-	{
-		elog(ERROR, "Can not open file: %s", filename);
-		PG_RETURN_VOID();
-	}
-
-	if (fstat(fd, &st) == -1)
-	{
-		close(fd);
-		elog(ERROR, "Can not stat object file : %s", filename);
-		PG_RETURN_VOID();
-	}
-
-	bitlen = VARBITLEN(s);
-	sp = VARBITS(s);
-	for (i = 0; i < bitlen - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
-	{
-		x = *sp;
-		/*  Is this bit set ? */
-		for (k = 0; k < BITS_PER_BYTE; k++)
-		{
-			if (IS_HIGHBIT_SET(x))
-			{
-				if (willneed)
-				{
-					(void) posix_fadvise(fd,
-					                     ((i+k) * pageSize),
-					                     pageSize,
-					                     POSIX_FADV_WILLNEED);
-					pages_loaded++;
-				}
-			}
-			else if (dontneed)
-			{
-				(void) posix_fadvise(fd,
-				                     ((i+k) * pageSize),
-				                     pageSize,
-				                     POSIX_FADV_DONTNEED);
-				pages_unloaded++;
-			}
-
-			x <<= 1;
-		}
-	}
-	/*
-	 * XXX this copy/paste of code to finnish to walk the bits is not pretty
-	 */
-	if (i < bitlen)
-	{
-		/* print the last partial byte */
-		x = *sp;
-		for (k = i; k < bitlen; k++)
-		{
-			if (IS_HIGHBIT_SET(x))
-			{
-				if (willneed)
-				{
-					(void) posix_fadvise(fd,
-					                     (k * pageSize),
-					                     pageSize,
-					                     POSIX_FADV_WILLNEED);
-					pages_loaded++;
-				}
-			}
-			else if (dontneed)
-			{
-				(void) posix_fadvise(fd,
-				                     (k * pageSize),
-				                     pageSize,
-				                     POSIX_FADV_DONTNEED);
-				pages_unloaded++;
-			}
-			x <<= 1;
-		}
-	}
-	close(fd);
+	result = pgfadvise_loader_file(filename,
+								   willneed, dontneed, databit,
+								   pgfloader);
 
 	/* Filename */
 	values[0] = CStringGetTextDatum( filename );
 	/* os page size */
-	values[1] = Int64GetDatum( pageSize );
+	values[1] = Int64GetDatum( pgfloader->pageSize );
 	/* free page cache */
-	values[2] = Int64GetDatum( pagesFree );
+	values[2] = Int64GetDatum( pgfloader->pagesFree );
 	/* pages loaded */
-	values[3] = Int64GetDatum( pages_loaded );
+	values[3] = Int64GetDatum( pgfloader->pagesLoaded );
 	/* pages unloaded  */
-	values[4] = Int64GetDatum( pages_unloaded );
-	memset(nulls, 0, sizeof(nulls));
+	values[4] = Int64GetDatum( pgfloader->pagesUnloaded );
+
+	/* Build and return the result tuple. */
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }

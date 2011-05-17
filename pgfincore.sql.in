@@ -92,7 +92,12 @@ LANGUAGE SQL;
 -- PGFADVISE_LOADER
 --
 CREATE OR REPLACE FUNCTION
-pgfadvise_loader(IN regclass, IN text, IN int, IN bool, IN bool, IN varbit)
+pgfadvise_loader(IN regclass, IN text, IN int, IN bool, IN bool, IN varbit,
+				 OUT relpath text,
+				 OUT os_page_size bigint,
+				 OUT os_pages_free bigint,
+				 OUT pages_loaded bigint,
+				 OUT pages_unloaded bigint)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
