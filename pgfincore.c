@@ -59,7 +59,7 @@ PG_MODULE_MAGIC;
  */
 typedef struct
 {
-	int64			filesize;
+	TupleDesc		tupd;			/* the tuple descriptor */
 	int				advice;			/* the posix_fadvise advice */
 	Relation		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
@@ -85,7 +85,7 @@ typedef struct
 Datum pgsysconf(PG_FUNCTION_ARGS);
 
 Datum 		pgfadvise(PG_FUNCTION_ARGS);
-static int	pgfadvise_file(char *filename, pgfadvise_fctx *fctx);
+static int	pgfadvise_file(char *filename, int advice, size_t *filesize);
 Datum pgfadvise_loader(PG_FUNCTION_ARGS);
 
 Datum		pgfincore(PG_FUNCTION_ARGS);
@@ -154,7 +154,7 @@ pgsysconf(PG_FUNCTION_ARGS)
  * pgfadvise_file
  */
 static int
-pgfadvise_file(char *filename, pgfadvise_fctx *fctx)
+pgfadvise_file(char *filename, int advice, size_t *filesize)
 {
 	/*
 	 * We work directly with the file
@@ -162,7 +162,7 @@ pgfadvise_file(char *filename, pgfadvise_fctx *fctx)
 	 */
 	struct stat	st;
 	int			fd;
-	int			advice;
+	int			adviceFlag;
 
 	/*
 	 * Open and fstat file
@@ -183,46 +183,56 @@ pgfadvise_file(char *filename, pgfadvise_fctx *fctx)
 	 * the file size is used in the SRF to output the number of pages used by
 	 * the segment
 	 */
-	fctx->filesize = st.st_size;
+	*filesize = st.st_size;
+	elog(DEBUG1, "pgfadvise: working on %s of %li bytes",
+		 filename, (long int) filesize);
+
+	/* FADVISE_WILLNEED */
+	if (advice == PGF_WILLNEED)
+	{
+		adviceFlag = POSIX_FADV_WILLNEED;
+		elog(DEBUG1, "pgfadvise: setting advice POSIX_FADV_WILLNEED");
+	}
+	/* FADVISE_DONTNEED */
+	else if (advice == PGF_DONTNEED)
+	{
+		adviceFlag = POSIX_FADV_DONTNEED;
+		elog(DEBUG1, "pgfadvise: setting advice POSIX_FADV_DONTNEED");
+
+	}
+	/* POSIX_FADV_NORMAL */
+	else if (advice == PGF_NORMAL)
+	{
+		adviceFlag = POSIX_FADV_NORMAL;
+		elog(DEBUG1, "pgfadvise: setting advice POSIX_FADV_NORMAL");
+
+	}
+	/* POSIX_FADV_SEQUENTIAL */
+	else if (advice == PGF_SEQUENTIAL)
+	{
+		adviceFlag = POSIX_FADV_SEQUENTIAL;
+		elog(DEBUG1, "pgfadvise: setting advice POSIX_FADV_SEQUENTIAL");
+
+	}
+	/* POSIX_FADV_RANDOM */
+	else if (advice == PGF_RANDOM)
+	{
+		adviceFlag = POSIX_FADV_RANDOM;
+		elog(DEBUG1, "pgfadvise: setting advice POSIX_FADV_RANDOM");
+
+	}
+	else
+	{
+		elog(ERROR, "pgfadvise: invalid advice: %d", advice);
+		return 2;
+	}
 
 	/*
-	* apply relevant function on the file descriptor
-	*/
-	switch (fctx->advice)
-	{
-		/* FADVISE_WILLNEED */
-	case PGF_WILLNEED :
-		advice = POSIX_FADV_WILLNEED;
-		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_WILLNEED");
-		break;
+	 * Call posix_fadvise with the relevant advice on the file descriptor
+	 */
+	posix_fadvise(fd, 0, 0, adviceFlag);
 
-		/* FADVISE_DONTNEED */
-	case PGF_DONTNEED :
-		advice = POSIX_FADV_DONTNEED;
-		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_DONTNEED");
-		break;
-
-		/* POSIX_FADV_NORMAL */
-	case PGF_NORMAL :
-		advice = POSIX_FADV_NORMAL;
-		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_NORMAL");
-		break;
-
-		/* POSIX_FADV_SEQUENTIAL */
-	case PGF_SEQUENTIAL :
-		advice = POSIX_FADV_SEQUENTIAL;
-		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_SEQUENTIAL");
-		break;
-
-		/* POSIX_FADV_RANDOM */
-	case PGF_RANDOM :
-		advice = POSIX_FADV_RANDOM;
-		elog(DEBUG1, "pgfincore: setting flag POSIX_FADV_RANDOM");
-		break;
-	}
-	posix_fadvise(fd, 0, 0, advice);
-
-	//   free things
+	/* close the file */
 	close(fd);
 
 	return 0;
@@ -238,40 +248,38 @@ PG_FUNCTION_INFO_V1(pgfadvise);
 Datum
 pgfadvise(PG_FUNCTION_ARGS)
 {
+	/* SRF Stuff */
 	FuncCallContext *funcctx;
 	pgfadvise_fctx  *fctx;
 
+	/* our return value, 0 for success */
 	int 			result;
+
+	/* The file we are working on */
 	char			filename[MAXPGPATH];
+
+	/* The filesize, filled by pgfadvise_file() */
+	size_t			filesize = 0;
 
 	/*
 	 * OS Page size and Free pages
 	 */
-	int64 pageSize	= sysconf(_SC_PAGESIZE);
-	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
-
-	/*
-	 * Postgresql stuff to return a tuple
-	 */
-	HeapTuple	tuple;
-	TupleDesc	tupdesc;
-	Datum		values[PGFADVISE_COLS];
-	bool		nulls[PGFADVISE_COLS];
-
-	tupdesc = CreateTemplateTupleDesc(PGFADVISE_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",			TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",		INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "rel_os_pages",		INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "os_pages_free",	INT8OID, -1, 0);
-	tupdesc = BlessTupleDesc(tupdesc);
+	size_t pageSize		= sysconf(_SC_PAGESIZE);
+	size_t pagesFree	= sysconf(_SC_AVPHYS_PAGES);
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
+
 		Oid			  relOid    = PG_GETARG_OID(0);
 		text		  *forkName = PG_GETARG_TEXT_P(1);
 		int			  advice	= PG_GETARG_INT32(2);
+
+		/*
+		* Postgresql stuff to return a tuple
+		*/
+		TupleDesc	tupdesc;
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -283,6 +291,13 @@ pgfadvise(PG_FUNCTION_ARGS)
 
 		/* allocate memory for user context */
 		fctx = (pgfadvise_fctx *) palloc(sizeof(pgfadvise_fctx));
+
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+            elog(ERROR, "return type must be a row type");
+
+		/* provide the tuple descriptor to the fonction structure */
+        fctx->tupd = tupdesc;
 
 		/* open the current relation, accessShareLock */
 		// TODO use try_relation_open instead ?
@@ -337,16 +352,18 @@ pgfadvise(PG_FUNCTION_ARGS)
 		         fctx->relationpath,
 		         fctx->segcount);
 
-	elog(DEBUG1, "pgfadvise: about to work with %s, current advice : %d", filename, fctx->advice);
+	elog(DEBUG1, "pgfadvise: about to work with %s, current advice : %d",
+		 filename, fctx->advice);
 
 	/*
 	 * Call posix_fadvise with the handler
 	 */
-	result = pgfadvise_file(filename, fctx);
+	result = pgfadvise_file(filename, fctx->advice, &filesize);
 
 	/*
 	* When we have work with all segments of the current relation
 	* We exit from the SRF
+	* Else we build and return the tuple for this segment
 	*/
 	if (result)
 	{
@@ -355,24 +372,34 @@ pgfadvise(PG_FUNCTION_ARGS)
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
+	else {
+		/*
+		* Postgresql stuff to return a tuple
+		*/
+		HeapTuple	tuple;
+		Datum		values[PGFADVISE_COLS];
+		bool		nulls[PGFADVISE_COLS];
 
+		/* initialize nulls array to build the tuple */
+		memset(nulls, 0, sizeof(nulls));
 
-	/* Filename */
-	values[0] = CStringGetTextDatum( filename );
-	/* os page size */
-	values[1] = Int64GetDatum( pageSize );
-	/* number of pages used by segment */
-	values[2] = Int64GetDatum( (fctx->filesize + pageSize - 1) / pageSize );
-	/* free page cache */
-	values[3] = Int64GetDatum( pagesFree );
-	memset(nulls, 0, sizeof(nulls));
-	tuple = heap_form_tuple(tupdesc, values, nulls);
+		/* prepare the number of the next segment */
+		fctx->segcount++;
 
-	/* prepare the number of the next segment */
-	fctx->segcount++;
+		/* Filename */
+		values[0] = CStringGetTextDatum( filename );
+		/* os page size */
+		values[1] = Int64GetDatum( (int64) pageSize );
+		/* number of pages used by segment */
+		values[2] = Int64GetDatum( (int64) ((filesize+pageSize-1)/pageSize) );
+		/* free page cache */
+		values[3] = Int64GetDatum( (int64) pagesFree );
+		/* Build the result tuple. */
+		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
-	/* Ok, return results, and go for next call */
-	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+		/* Ok, return results, and go for next call */
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
 }
 
 /*

@@ -19,8 +19,8 @@ pgsysconf_pretty(OUT os_page_size   text,
                  OUT os_total_pages text)
 RETURNS record
 AS '
-select pg_size_pretty(os_page_size) as os_page_size,
-       pg_size_pretty(os_pages_free * os_page_size) as os_pages_free,
+select pg_size_pretty(os_page_size)                  as os_page_size,
+       pg_size_pretty(os_pages_free * os_page_size)  as os_pages_free,
        pg_size_pretty(os_total_pages * os_page_size) as os_total_pages
 from pgsysconf()'
 LANGUAGE SQL;
@@ -29,7 +29,11 @@ LANGUAGE SQL;
 -- PGFADVISE
 --
 CREATE OR REPLACE FUNCTION
-pgfadvise(IN regclass, IN text, IN int)
+pgfadvise(IN regclass, IN text, IN int,
+		  OUT relpath text,
+		  OUT os_page_size bigint,
+		  OUT rel_os_pages bigint,
+		  OUT os_pages_free bigint)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
