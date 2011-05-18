@@ -137,7 +137,7 @@ pgfincore(IN regclass,
 		  OUT pages_mem bigint,
 		  OUT group_mem bigint,
 		  OUT os_pages_free bigint,
-		  OUT data      varbit)
+		  OUT databit      varbit)
 RETURNS setof record
 AS 'SELECT pgfincore($1, ''main'')'
 LANGUAGE SQL;

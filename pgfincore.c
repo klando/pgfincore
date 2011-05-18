@@ -227,8 +227,8 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	 * the segment
 	 */
 	pgfdv->filesize = st.st_size;
-	elog(DEBUG1, "pgfadvise: working on %s of %li bytes",
-		 filename, (long int) pgfdv->filesize);
+	elog(DEBUG1, "pgfadvise: working on %s of %lld bytes",
+		 filename, (int64) pgfdv->filesize);
 
 	/* FADVISE_WILLNEED */
 	if (advice == PGF_WILLNEED)
@@ -683,7 +683,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 {
 	int		flag=1;
 
-	int		len, slen, bitlen;
+	int		len, bitlen;
 	bits8	*r;
 	bits8	x = 0;
 	register int64 pageIndex;
@@ -707,7 +707,6 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 */
 	pgfncr->pages_mem = 0;
 	pgfncr->group_mem = 0;
-	pgfncr->pages_mem = 0;
 
 	/*
 	* Open, fstat file
@@ -768,8 +767,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/*
 		 * prepare the bit string
 		 */
-		slen = st.st_size/pgfncr->pageSize;
-		bitlen = slen;
+		bitlen = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
 		len = VARBITTOTALLEN(bitlen);
 		/*
 		 * set to 0 so that *r is always initialised and string is zero-padded
@@ -777,7 +775,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		 */
 		pgfncr->databit = (VarBit *) palloc0(len);
 		SET_VARSIZE(pgfncr->databit, len);
-		VARBITLEN(pgfncr->databit) = Min(bitlen, bitlen);
+		VARBITLEN(pgfncr->databit) = bitlen;
 
 		r = VARBITS(pgfncr->databit);
 		x = HIGHBIT;
