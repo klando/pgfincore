@@ -95,15 +95,25 @@ typedef struct
  */
 typedef struct
 {
-	int64			rel_os_pages;
-	int64			pages_mem;
-	int64			group_mem;
-	VarBit			*databit;
+	TupleDesc		tupd;			/* the tuple descriptor */
 	Relation 		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
 	char			*relationpath;	/* the relation path */
 } pgfincore_fctx;
 
+/*
+ * pgfadvise_loader_struct structure is needed
+ * to keep track of relation path, segment number, ...
+ */
+typedef struct
+{
+	size_t	pageSize;		/* os page size */
+	size_t	pagesFree;		/* free page cache */
+	size_t	rel_os_pages;
+	size_t	pages_mem;
+	size_t	group_mem;
+	VarBit	*databit;
+} pgfincoreStruct;
 
 Datum pgsysconf(PG_FUNCTION_ARGS);
 
@@ -117,7 +127,7 @@ static int	pgfadvise_loader_file(char *filename,
 								  pgfloaderStruct *pgfloader);
 
 Datum		pgfincore(PG_FUNCTION_ARGS);
-static int	pgfincore_file(char *filename, pgfincore_fctx *fctx);
+static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 /*
  * We need to add some handler to keep the code clean
@@ -669,7 +679,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
  * pgfincore_file handle the mmaping, mincore process (and access file, etc.)
  */
 static int
-pgfincore_file(char *filename, pgfincore_fctx *fctx)
+pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 {
 	int		flag=1;
 
@@ -690,14 +700,14 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 	/*
 	 * OS Page size
 	 */
-	int64 pageSize  = sysconf(_SC_PAGESIZE);
+	pgfncr->pageSize  = sysconf(_SC_PAGESIZE);
 
 	/*
 	 * Initialize counters
 	 */
-	fctx->pages_mem = 0;
-	fctx->group_mem = 0;
-	fctx->pages_mem = 0;
+	pgfncr->pages_mem = 0;
+	pgfncr->group_mem = 0;
+	pgfncr->pages_mem = 0;
 
 	/*
 	* Open, fstat file
@@ -721,7 +731,7 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 	if (st.st_size != 0)
 	{
 		/* number of pages in the current file */
-		fctx->rel_os_pages = (st.st_size+pageSize-1)/pageSize;
+		pgfncr->rel_os_pages = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
 
 		/* TODO We need to split mmap size to be sure (?) to be able to mmap */
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
@@ -734,7 +744,7 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 		}
 
 		/* Prepare our vector containing all blocks information */
-		vec = calloc(1, (st.st_size+pageSize-1)/pageSize);
+		vec = calloc(1, (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
 		if ((void *)0 == vec)
 		{
 			munmap(pa, st.st_size);
@@ -758,34 +768,34 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 		/*
 		 * prepare the bit string
 		 */
-		slen = st.st_size/pageSize;
+		slen = st.st_size/pgfncr->pageSize;
 		bitlen = slen;
 		len = VARBITTOTALLEN(bitlen);
 		/*
 		 * set to 0 so that *r is always initialised and string is zero-padded
 		 * XXX: do we need to free that ?
 		 */
-		fctx->databit = (VarBit *) palloc0(len);
-		SET_VARSIZE(fctx->databit, len);
-		VARBITLEN(fctx->databit) = Min(bitlen, bitlen);
+		pgfncr->databit = (VarBit *) palloc0(len);
+		SET_VARSIZE(pgfncr->databit, len);
+		VARBITLEN(pgfncr->databit) = Min(bitlen, bitlen);
 
-		r = VARBITS(fctx->databit);
+		r = VARBITS(pgfncr->databit);
 		x = HIGHBIT;
 
 		/* handle the results */
-		for (pageIndex = 0; pageIndex <= fctx->rel_os_pages; pageIndex++)
+		for (pageIndex = 0; pageIndex <= pgfncr->rel_os_pages; pageIndex++)
 		{
 			// block in memory
 			if (vec[pageIndex] & 1)
 			{
-				fctx->pages_mem++;
+				pgfncr->pages_mem++;
 				*r |= x;
 				elog (DEBUG5, "in memory blocks : %lld / %lld",
-				      pageIndex, fctx->rel_os_pages);
+				      (int64) pageIndex, (int64) pgfncr->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
 				if (flag)
-					fctx->group_mem++;
+					pgfncr->group_mem++;
 				flag = 0;
 			}
 			else
@@ -800,7 +810,7 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 		}
 	}
 	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
-	     filename, fctx->pages_mem,  fctx->rel_os_pages, fctx->group_mem);
+	     filename, (int64) pgfncr->pages_mem,  (int64) pgfncr->rel_os_pages, (int64) pgfncr->group_mem);
 
 	/*
 	 * free and close
@@ -808,6 +818,12 @@ pgfincore_file(char *filename, pgfincore_fctx *fctx)
 	free(vec);
 	munmap(pa, st.st_size);
 	close(fd);
+
+	/*
+	 * OS things : Pages free
+	 */
+	pgfncr->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+
 	return 0;
 }
 
@@ -821,41 +837,31 @@ PG_FUNCTION_INFO_V1(pgfincore);
 Datum
 pgfincore(PG_FUNCTION_ARGS)
 {
+	/* SRF Stuff */
 	FuncCallContext *funcctx;
 	pgfincore_fctx  *fctx;
 
+	/* our structure use to return values */
+	pgfincoreStruct	*pgfncr;
+
+	/* our return value, 0 for success */
 	int 			result;
+
+	/* The file we are working on */
 	char			filename[MAXPGPATH];
-
-	/*
-	 * OS Page size and Free pages
-	 */
-	int64 pageSize	= sysconf(_SC_PAGESIZE);
-	int64 pagesFree	= sysconf(_SC_AVPHYS_PAGES);
-
-	/*
-	 * Postgresql stuff to return a tuple
-	 */
-	HeapTuple	tuple;
-	TupleDesc	tupdesc;
-	Datum		values[PGFINCORE_COLS];
-	bool		nulls[PGFINCORE_COLS];
-	tupdesc = CreateTemplateTupleDesc(PGFINCORE_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "relpath",		TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "os_page_size",	INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "rel_os_pages",	INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "pages_mem",	INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "group_mem",	INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "os_pages_free",INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "data",		  VARBITOID, -1, 0);
-	tupdesc = BlessTupleDesc(tupdesc);
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
+
 		Oid			  relOid    = PG_GETARG_OID(0);
 		text		  *forkName = PG_GETARG_TEXT_P(1);
+
+		/*
+		* Postgresql stuff to return a tuple
+		*/
+		TupleDesc	tupdesc;
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -867,6 +873,13 @@ pgfincore(PG_FUNCTION_ARGS)
 
 		/* allocate memory for user context */
 		fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
+
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+            elog(ERROR, "pgfadvise: return type must be a row type");
+
+		/* provide the tuple descriptor to the fonction structure */
+        fctx->tupd = tupdesc;
 
 		/* open the current relation, accessShareLock */
 		// TODO use try_relation_open instead ?
@@ -920,7 +933,11 @@ pgfincore(PG_FUNCTION_ARGS)
 
 	elog(DEBUG1, "pgfincore: about to work with %s", filename);
 
-	result = pgfincore_file(filename, fctx);
+	/*
+	 * Call pgfincore with the advice, returning the structure
+	 */
+	pgfncr = (pgfincoreStruct *) palloc(sizeof(pgfincoreStruct));
+	result = pgfincore_file(filename, pgfncr);
 
 	/*
 	* When we have work with all segment of the current relation, test success
@@ -933,20 +950,39 @@ pgfincore(PG_FUNCTION_ARGS)
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
+	else
+	{
+		/*
+		* Postgresql stuff to return a tuple
+		*/
+		HeapTuple	tuple;
+		Datum		values[PGFINCORE_COLS];
+		bool		nulls[PGFINCORE_COLS];
 
-	values[0] = CStringGetTextDatum(filename);
-	values[1] = Int64GetDatum(pageSize);
-	values[2] = Int64GetDatum(fctx->rel_os_pages);
-	values[3] = Int64GetDatum(fctx->pages_mem);
-	values[4] = Int64GetDatum(fctx->group_mem);
-	values[5] = Int64GetDatum( pagesFree );
-	values[6] = VarBitPGetDatum(fctx->databit);
-	memset(nulls, 0, sizeof(nulls));
-	tuple = heap_form_tuple(tupdesc, values, nulls);
+		/* initialize nulls array to build the tuple */
+		memset(nulls, 0, sizeof(nulls));
 
-	/* prepare the number of the next segment */
-	fctx->segcount++;
+		/* prepare the number of the next segment */
+		fctx->segcount++;
 
-	/* Ok, return results, and go for next call */
-	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+		/* Filename */
+		values[0] = CStringGetTextDatum(filename);
+		/* os page size */
+		values[1] = Int64GetDatum(pgfncr->pageSize);
+		/* number of pages used by segment */
+		values[2] = Int64GetDatum(pgfncr->rel_os_pages);
+		/* number of pages in OS cache */
+		values[3] = Int64GetDatum(pgfncr->pages_mem);
+		/* number of group of contigous page in os cache */
+		values[4] = Int64GetDatum(pgfncr->group_mem);
+		/* free page cache */
+		values[5] = Int64GetDatum(pgfncr->pagesFree);
+		/* the map of the file with bit set for in os cache page */
+		values[6] = VarBitPGetDatum(pgfncr->databit);
+		/* Build the result tuple. */
+		tuple = heap_form_tuple(fctx->tupd, values, nulls);
+
+		/* Ok, return results, and go for next call */
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
 }

@@ -117,8 +117,14 @@ LANGUAGE SQL;
 -- PGFINCORE
 --
 CREATE OR REPLACE FUNCTION
-pgfincore(IN regclass,
-		  IN text)
+pgfincore(IN regclass, IN text,
+		  OUT relpath text,
+		  OUT os_page_size bigint,
+		  OUT rel_os_pages bigint,
+		  OUT pages_mem bigint,
+		  OUT group_mem bigint,
+		  OUT os_pages_free bigint,
+		  OUT databit      varbit)
 RETURNS setof record
 AS 'MODULE_PATHNAME'
 LANGUAGE C;
