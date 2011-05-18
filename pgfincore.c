@@ -67,6 +67,17 @@ typedef struct
 } pgfadvise_fctx;
 
 /*
+ * pgfadvise structure is needed
+ * to return values
+ */
+typedef struct
+{
+	size_t			pageSize;	/* os page size */
+	size_t			pagesFree;	/* free page cache */
+	size_t			filesize;	/* the filesize */
+} pgfadviseStruct;
+
+/*
  * pgfloader structure is needed
  * to return values
  */
@@ -97,7 +108,7 @@ typedef struct
 Datum pgsysconf(PG_FUNCTION_ARGS);
 
 Datum 		pgfadvise(PG_FUNCTION_ARGS);
-static int	pgfadvise_file(char *filename, int advice, size_t *filesize);
+static int	pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv);
 
 Datum		pgfadvise_loader(PG_FUNCTION_ARGS);
 static int	pgfadvise_loader_file(char *filename,
@@ -170,7 +181,7 @@ pgsysconf(PG_FUNCTION_ARGS)
  * pgfadvise_file
  */
 static int
-pgfadvise_file(char *filename, int advice, size_t *filesize)
+pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 {
 	/*
 	 * We work directly with the file
@@ -179,6 +190,11 @@ pgfadvise_file(char *filename, int advice, size_t *filesize)
 	struct stat	st;
 	int			fd;
 	int			adviceFlag;
+
+	/*
+	 * OS Page size and Free pages
+	 */
+	pgfdv->pageSize	= sysconf(_SC_PAGESIZE);
 
 	/*
 	 * Open and fstat file
@@ -199,9 +215,9 @@ pgfadvise_file(char *filename, int advice, size_t *filesize)
 	 * the file size is used in the SRF to output the number of pages used by
 	 * the segment
 	 */
-	*filesize = st.st_size;
+	pgfdv->filesize = st.st_size;
 	elog(DEBUG1, "pgfadvise: working on %s of %li bytes",
-		 filename, (long int) filesize);
+		 filename, (long int) pgfdv->filesize);
 
 	/* FADVISE_WILLNEED */
 	if (advice == PGF_WILLNEED)
@@ -251,6 +267,11 @@ pgfadvise_file(char *filename, int advice, size_t *filesize)
 	/* close the file */
 	close(fd);
 
+	/*
+	 * OS things : Pages free
+	 */
+	pgfdv->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+
 	return 0;
 }
 
@@ -268,20 +289,14 @@ pgfadvise(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	pgfadvise_fctx  *fctx;
 
+	/* our structure use to return values */
+	pgfadviseStruct	*pgfdv;
+
 	/* our return value, 0 for success */
 	int 			result;
 
 	/* The file we are working on */
 	char			filename[MAXPGPATH];
-
-	/* The filesize, filled by pgfadvise_file() */
-	size_t			filesize = 0;
-
-	/*
-	 * OS Page size and Free pages
-	 */
-	size_t pageSize		= sysconf(_SC_PAGESIZE);
-	size_t pagesFree	= sysconf(_SC_AVPHYS_PAGES);
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
@@ -372,9 +387,10 @@ pgfadvise(PG_FUNCTION_ARGS)
 		 filename, fctx->advice);
 
 	/*
-	 * Call posix_fadvise with the advice, returning the filesize
+	 * Call posix_fadvise with the advice, returning the structure
 	 */
-	result = pgfadvise_file(filename, fctx->advice, &filesize);
+	pgfdv = (pgfadviseStruct *) palloc(sizeof(pgfadviseStruct));
+	result = pgfadvise_file(filename, fctx->advice, pgfdv);
 
 	/*
 	* When we have work with all segments of the current relation
@@ -405,11 +421,11 @@ pgfadvise(PG_FUNCTION_ARGS)
 		/* Filename */
 		values[0] = CStringGetTextDatum( filename );
 		/* os page size */
-		values[1] = Int64GetDatum( (int64) pageSize );
+		values[1] = Int64GetDatum( (int64) pgfdv->pageSize );
 		/* number of pages used by segment */
-		values[2] = Int64GetDatum( (int64) ((filesize+pageSize-1)/pageSize) );
+		values[2] = Int64GetDatum( (int64) ((pgfdv->filesize+pgfdv->pageSize-1)/pgfdv->pageSize) );
 		/* free page cache */
-		values[3] = Int64GetDatum( (int64) pagesFree );
+		values[3] = Int64GetDatum( (int64) pgfdv->pagesFree );
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
