@@ -83,10 +83,10 @@ typedef struct
  */
 typedef struct
 {
-	size_t			pageSize;		/* os page size */
-	size_t			pagesFree;		/* free page cache */
-	size_t			pagesLoaded;	/* pages loaded */
-	size_t			pagesUnloaded;	/* pages unloaded  */
+	size_t	pageSize;		/* os page size */
+	size_t	pagesFree;		/* free page cache */
+	size_t	pagesLoaded;	/* pages loaded */
+	size_t	pagesUnloaded;	/* pages unloaded  */
 } pgfloaderStruct;
 
 /*
@@ -112,7 +112,8 @@ static int	pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv);
 
 Datum		pgfadvise_loader(PG_FUNCTION_ARGS);
 static int	pgfadvise_loader_file(char *filename,
-								  bool willneed, bool dontneed, VarBit *databit,
+								  bool willneed, bool dontneed,
+								  VarBit *databit,
 								  pgfloaderStruct *pgfloader);
 
 Datum		pgfincore(PG_FUNCTION_ARGS);
@@ -573,6 +574,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	bool      dontneed      = PG_GETARG_BOOL(4);
 	VarBit    *databit		= PG_GETARG_VARBIT_P(5);
 
+	/* our structure use to return values */
 	pgfloaderStruct	*pgfloader;
 
 	Relation  rel;
@@ -596,9 +598,6 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
-
-	/* allocate memory for user context */
-	pgfloader = (pgfloaderStruct *) palloc(sizeof(pgfloaderStruct));
 
 	/* open the current relation in accessShareLock */
 	rel = relation_open(relOid, AccessShareLock);
@@ -645,6 +644,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	/*
 	 * Call pgfadvise_loader with the varbit
 	 */
+	pgfloader = (pgfloaderStruct *) palloc(sizeof(pgfloaderStruct));
 	result = pgfadvise_loader_file(filename,
 								   willneed, dontneed, databit,
 								   pgfloader);
