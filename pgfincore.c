@@ -135,19 +135,11 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
  * XXX: and 8.3 ?!
  */
 #if PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
-
-static char *relpathperm(RelFileNode rnode, ForkNumber forknum);
-static bool RelationUsesTempNamespace(Relation relation);
-
-static char *relpathperm(RelFileNode rnode, ForkNumber forknum)
-{
-	return relpath(rnode, forknum);
-}
-static bool RelationUsesTempNamespace(Relation relation)
-{
-	return (relation->rd_istemp || relation->rd_islocaltemp);
-}
-
+#define relpathpg(rel, forknum) \
+        relpath((rel)->rd_node, forknum)
+#else
+#define relpathpg(rel, forknum) \
+        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forknum))
 #endif
 
 /*
@@ -345,23 +337,15 @@ pgfadvise(PG_FUNCTION_ARGS)
 		// TODO use try_relation_open instead ?
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
-		/*
-		 * Because temp tables are not in the same directory, we fail
-		 * XXX: can be fixed
-		 */
-		if (RelationUsesTempNamespace(fctx->rel))
-		{
-			relation_close(fctx->rel, AccessShareLock);
-			elog(NOTICE,
-			     "pgfadvise: does not work with temporary tables.");
-			pfree(fctx);
-			SRF_RETURN_DONE(funcctx);
-		}
-
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathperm(fctx->rel->rd_node,
-		                                 forkname_to_number( text_to_cstring(forkName) ));
-
+		fctx->relationpath = relpathpg(fctx->rel,
+									   forkname_to_number(
+										   text_to_cstring(forkName)));
+/*		relpathbackend(fctx->rel->rd_node,
+											fctx->rel->rd_backend,
+											forkname_to_number(
+												text_to_cstring(forkName)));
+*/
 		/* Here we keep track of current action in all calls */
 		fctx->advice = advice;
 
@@ -612,22 +596,11 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	/* open the current relation in accessShareLock */
 	rel = relation_open(relOid, AccessShareLock);
 
-	/*
-	 * Because temp tables are not in the same directory, we fail
-	 * XXX: can be fixed
-	 */
-	if (RelationUsesTempNamespace(rel))
-	{
-		relation_close(rel, AccessShareLock);
-		elog(NOTICE,
-		     "pgfincore does not work with temporary tables.");
-		PG_RETURN_VOID();
-	}
-
 	/* we get the common part of the filename of each segment of a relation */
-	relationpath = relpathperm(rel->rd_node,
-	                           forkname_to_number(text_to_cstring(forkName))
-	                          );
+	relationpath = relpathpg(rel,
+							 forkname_to_number(
+								 text_to_cstring(forkName)));
+
 	/*
 	 * If we are looking the first segment,
 	 * relationpath should not be suffixed
@@ -705,8 +678,9 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	/*
 	 * Initialize counters
 	 */
-	pgfncr->pages_mem = 0;
-	pgfncr->group_mem = 0;
+	pgfncr->pages_mem		= 0;
+	pgfncr->group_mem		= 0;
+	pgfncr->rel_os_pages	= 0;
 
 	/*
 	* Open, fstat file
@@ -883,22 +857,10 @@ pgfincore(PG_FUNCTION_ARGS)
 		// TODO use try_relation_open instead ?
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
-		/*
-		 * Because temp tables are not in the same directory, we fail
-		 * XXX: can be fixed
-		 */
-		if (RelationUsesTempNamespace(fctx->rel))
-		{
-			relation_close(fctx->rel, AccessShareLock);
-			elog(NOTICE,
-			     "pgfincore does not work with temporary tables.");
-			pfree(fctx);
-			SRF_RETURN_DONE(funcctx);
-		}
-
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathperm(fctx->rel->rd_node,
-		                                 forkname_to_number( text_to_cstring(forkName) ));
+		fctx->relationpath = relpathpg(fctx->rel,
+									   forkname_to_number(
+										   text_to_cstring(forkName)));
 
 		/* segcount is used to get the next segment of the current relation */
 		fctx->segcount = 0;
@@ -976,7 +938,15 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* free page cache */
 		values[5] = Int64GetDatum(pgfncr->pagesFree);
 		/* the map of the file with bit set for in os cache page */
-		values[6] = VarBitPGetDatum(pgfncr->databit);
+		if (pgfncr->rel_os_pages)
+		{
+			values[6] = VarBitPGetDatum(pgfncr->databit);
+		}
+		else
+		{
+			nulls[6]  = true;
+			values[6] = (Datum) NULL;
+		}
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
