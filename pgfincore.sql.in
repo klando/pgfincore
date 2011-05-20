@@ -1,4 +1,3 @@
-BEGIN;
 
 SET search_path = public;
 
@@ -155,5 +154,4 @@ RETURNS setof record
 AS 'SELECT * from pgfincore($1, ''main'', false)'
 LANGUAGE SQL;
 
-COMMIT;
 
