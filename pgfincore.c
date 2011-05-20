@@ -95,6 +95,7 @@ typedef struct
  */
 typedef struct
 {
+	bool			getvector;		/* output varbit data ? */
 	TupleDesc		tupd;			/* the tuple descriptor */
 	Relation 		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
@@ -827,8 +828,9 @@ pgfincore(PG_FUNCTION_ARGS)
 	{
 		MemoryContext oldcontext;
 
-		Oid			  relOid    = PG_GETARG_OID(0);
-		text		  *forkName = PG_GETARG_TEXT_P(1);
+		Oid		relOid    = PG_GETARG_OID(0);
+		text	*forkName = PG_GETARG_TEXT_P(1);
+		bool	getvector = PG_GETARG_BOOL(2);
 
 		/*
 		* Postgresql stuff to return a tuple
@@ -852,6 +854,9 @@ pgfincore(PG_FUNCTION_ARGS)
 
 		/* provide the tuple descriptor to the fonction structure */
         fctx->tupd = tupdesc;
+
+		/* are we going to grab and output the varbit data (can be large) */
+        fctx->getvector = getvector;
 
 		/* open the current relation, accessShareLock */
 		// TODO use try_relation_open instead ?
@@ -938,7 +943,7 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* free page cache */
 		values[5] = Int64GetDatum(pgfncr->pagesFree);
 		/* the map of the file with bit set for in os cache page */
-		if (pgfncr->rel_os_pages)
+		if (fctx->getvector && pgfncr->rel_os_pages)
 		{
 			values[6] = VarBitPGetDatum(pgfncr->databit);
 		}

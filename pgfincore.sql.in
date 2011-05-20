@@ -117,7 +117,7 @@ LANGUAGE SQL;
 -- PGFINCORE
 --
 CREATE OR REPLACE FUNCTION
-pgfincore(IN regclass, IN text,
+pgfincore(IN regclass, IN text, IN bool,
 		  OUT relpath text,
 		  OUT os_page_size bigint,
 		  OUT rel_os_pages bigint,
@@ -130,6 +130,19 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
+pgfincore(IN regclass, IN bool,
+		  OUT relpath text,
+		  OUT os_page_size bigint,
+		  OUT rel_os_pages bigint,
+		  OUT pages_mem bigint,
+		  OUT group_mem bigint,
+		  OUT os_pages_free bigint,
+		  OUT databit      varbit)
+RETURNS setof record
+AS 'SELECT * from pgfincore($1, ''main'', $2)'
+LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass,
 		  OUT relpath text,
 		  OUT os_page_size bigint,
@@ -139,7 +152,8 @@ pgfincore(IN regclass,
 		  OUT os_pages_free bigint,
 		  OUT databit      varbit)
 RETURNS setof record
-AS 'SELECT pgfincore($1, ''main'')'
+AS 'SELECT * from pgfincore($1, ''main'', false)'
 LANGUAGE SQL;
 
 COMMIT;
+
