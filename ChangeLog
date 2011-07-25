@@ -1,5 +1,5 @@
 05/XX/2011 Cédric Villemain <cedric@villemain.org>
-  * 0.9.0 - Output varbit containing vector information with pgfincore*()
+  * 1.0.0 - Output varbit containing vector information with pgfincore*()
 		  - Add Debian packaging (Dimitri Fontaine)
 		  - Update to work with PostgreSQL >= 9.1 (Jeff Janes)
           - Add total number of pages of memory with pgsysconf()
@@ -9,6 +9,10 @@
 		  - pgfadvise_loader() to restore file status (pages in/out cache)
 		  - pgfincore*() to handle mincore usage
 		  - pgsysconf*() to handle sysconf information
+		  - Use get_call_result_type() to build the tuple descriptor (suggested
+		    by RhodiumToad on IRC)
+		  - Remove limitation of usage on temp tables
+		  - Improve 9.1 installation (Extension)
 
 04/30/2010 Cédric Villemain <cedric@villemain.org>
 

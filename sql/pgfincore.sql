@@ -1,6 +1,4 @@
 
-SET search_path = public;
-
 --
 -- SYSCONF
 --
@@ -9,7 +7,7 @@ pgsysconf(OUT os_page_size   bigint,
           OUT os_pages_free  bigint,
           OUT os_total_pages bigint)
 RETURNS record
-AS 'MODULE_PATHNAME'
+AS '$libdir/pgfincore'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
@@ -34,7 +32,7 @@ pgfadvise(IN regclass, IN text, IN int,
 		  OUT rel_os_pages bigint,
 		  OUT os_pages_free bigint)
 RETURNS setof record
-AS 'MODULE_PATHNAME'
+AS '$libdir/pgfincore'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
@@ -98,7 +96,7 @@ pgfadvise_loader(IN regclass, IN text, IN int, IN bool, IN bool, IN varbit,
 				 OUT pages_loaded bigint,
 				 OUT pages_unloaded bigint)
 RETURNS setof record
-AS 'MODULE_PATHNAME'
+AS '$libdir/pgfincore'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION
@@ -125,7 +123,7 @@ pgfincore(IN regclass, IN text, IN bool,
 		  OUT os_pages_free bigint,
 		  OUT databit      varbit)
 RETURNS setof record
-AS 'MODULE_PATHNAME'
+AS '$libdir/pgfincore'
 LANGUAGE C;
 
 CREATE OR REPLACE FUNCTION

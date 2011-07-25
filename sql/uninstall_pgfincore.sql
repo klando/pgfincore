@@ -1,7 +1,4 @@
 
-
-SET search_path = public;
-
 DROP FUNCTION pgsysconf_pretty();
 DROP FUNCTION pgsysconf();
 
