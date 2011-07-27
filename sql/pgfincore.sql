@@ -116,6 +116,7 @@ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass, IN text, IN bool,
 		  OUT relpath text,
+		  OUT segment int,
 		  OUT os_page_size bigint,
 		  OUT rel_os_pages bigint,
 		  OUT pages_mem bigint,
@@ -129,6 +130,7 @@ LANGUAGE C;
 CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass, IN bool,
 		  OUT relpath text,
+		  OUT segment int,
 		  OUT os_page_size bigint,
 		  OUT rel_os_pages bigint,
 		  OUT pages_mem bigint,
@@ -142,6 +144,7 @@ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION
 pgfincore(IN regclass,
 		  OUT relpath text,
+		  OUT segment int,
 		  OUT os_page_size bigint,
 		  OUT rel_os_pages bigint,
 		  OUT pages_mem bigint,

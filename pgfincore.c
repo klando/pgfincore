@@ -45,7 +45,7 @@ PG_MODULE_MAGIC;
 #define PGSYSCONF_COLS  		3
 #define PGFADVISE_COLS			4
 #define PGFADVISE_LOADER_COLS	5
-#define PGFINCORE_COLS  		7
+#define PGFINCORE_COLS  		8
 
 #define PGF_WILLNEED	10
 #define PGF_DONTNEED	20
@@ -929,33 +929,35 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* initialize nulls array to build the tuple */
 		memset(nulls, 0, sizeof(nulls));
 
-		/* prepare the number of the next segment */
-		fctx->segcount++;
-
 		/* Filename */
 		values[0] = CStringGetTextDatum(filename);
+		/* Segment Number */
+		values[1] = Int32GetDatum(fctx->segcount);
 		/* os page size */
-		values[1] = Int64GetDatum(pgfncr->pageSize);
+		values[2] = Int64GetDatum(pgfncr->pageSize);
 		/* number of pages used by segment */
-		values[2] = Int64GetDatum(pgfncr->rel_os_pages);
+		values[3] = Int64GetDatum(pgfncr->rel_os_pages);
 		/* number of pages in OS cache */
-		values[3] = Int64GetDatum(pgfncr->pages_mem);
+		values[4] = Int64GetDatum(pgfncr->pages_mem);
 		/* number of group of contigous page in os cache */
-		values[4] = Int64GetDatum(pgfncr->group_mem);
+		values[5] = Int64GetDatum(pgfncr->group_mem);
 		/* free page cache */
-		values[5] = Int64GetDatum(pgfncr->pagesFree);
+		values[6] = Int64GetDatum(pgfncr->pagesFree);
 		/* the map of the file with bit set for in os cache page */
 		if (fctx->getvector && pgfncr->rel_os_pages)
 		{
-			values[6] = VarBitPGetDatum(pgfncr->databit);
+			values[7] = VarBitPGetDatum(pgfncr->databit);
 		}
 		else
 		{
-			nulls[6]  = true;
-			values[6] = (Datum) NULL;
+			nulls[7]  = true;
+			values[7] = (Datum) NULL;
 		}
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
+
+        /* prepare the number of the next segment */
+        fctx->segcount++;
 
 		/* Ok, return results, and go for next call */
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
