@@ -220,7 +220,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	 * the segment
 	 */
 	pgfdv->filesize = st.st_size;
-	elog(DEBUG1, "pgfadvise: working on %s of %lld bytes",
+	elog(DEBUG1, "pgfadvise: working on %s of %ld bytes",
 		 filename, (int64) pgfdv->filesize);
 
 	/* FADVISE_WILLNEED */
@@ -632,6 +632,8 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	result = pgfadvise_loader_file(filename,
 								   willneed, dontneed, databit,
 								   pgfloader);
+	if (result != 0)
+		elog(ERROR, "Can't read file %s", filename);
 
 	/* Filename */
 	values[0] = CStringGetTextDatum( filename );
@@ -734,7 +736,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			free(vec);
 			munmap(pa, st.st_size);
 			close(fd);
-			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
+			elog(ERROR, "mincore(%p, %ld, %p): %s\n",
 			     pa, (int64)st.st_size, vec, strerror(errno));
 			return 5;
 		}
@@ -763,7 +765,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			{
 				pgfncr->pages_mem++;
 				*r |= x;
-				elog (DEBUG5, "in memory blocks : %lld / %lld",
+				elog (DEBUG5, "in memory blocks : %ld / %ld",
 				      (int64) pageIndex, (int64) pgfncr->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
@@ -782,7 +784,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			}
 		}
 	}
-	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
+	elog(DEBUG1, "pgfincore %s: %ld of %ld block in linux cache, %ld groups",
 	     filename, (int64) pgfncr->pages_mem,  (int64) pgfncr->rel_os_pages, (int64) pgfncr->group_mem);
 
 	/*
