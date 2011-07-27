@@ -1,0 +1,5 @@
+.pc
+debian/control
+debian/files
+debian/pgfincore-*
+debian/postgresql-*
