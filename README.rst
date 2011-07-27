@@ -339,11 +339,11 @@ For the specified relation it returns:
   * os_page_size : the size of one page
   * rel_os_pages : the total number of pages of the relation
   * pages_mem : the total number of relation's pages in page cache.
-                (not the shared buffers from PostgreSQL but the OS cache)
+    (not the shared buffers from PostgreSQL but the OS cache)
   * group_mem : the number of groups of adjacent pages_mem
   * os_page_free : the number of free page in the OS page cache
   * databit : the varbit map of the file, because of its size it is useless to output
-              Use pgfincore('pgbench_accounts',true) to activate it.
+    Use pgfincore('pgbench_accounts',true) to activate it.
 
 DEBUG
 =====
