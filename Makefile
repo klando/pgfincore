@@ -10,7 +10,7 @@ EXTVERSION   = $(shell grep default_version $(SRCDIR)/$(EXTENSION).control | \
 
 MODULES      = $(EXTENSION)
 DATA         = sql/pgfincore.sql sql/uninstall_pgfincore.sql
-DOCS         = README.$(EXTENSION).rst
+DOCS         = README.rst
 
 PG_CONFIG    = pg_config
 
