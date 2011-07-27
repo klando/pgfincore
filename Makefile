@@ -9,7 +9,7 @@ EXTVERSION   = $(shell grep default_version $(SRCDIR)/$(EXTENSION).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 
 MODULES      = $(EXTENSION)
-DATA         = $(filter-out $(wildcard sql/*--*.sql),$(wildcard sql/*.sql))
+DATA         = sql/pgfincore.sql sql/uninstall_pgfincore.sql
 DOCS         = doc/README.$(EXTENSION).rst
 
 PG_CONFIG    = pg_config
@@ -17,12 +17,12 @@ PG_CONFIG    = pg_config
 PG91         = $(shell $(PG_CONFIG) --version | grep -qE "8\.|9\.0" && echo no || echo yes)
 
 ifeq ($(PG91),yes)
-all: $(EXTENSION)--$(EXTVERSION).sql
+all: pgfincore--$(EXTVERSION).sql
 
-$(EXTENSION)--$(EXTVERSION).sql: $(SRCDIR)/sql/$(EXTENSION).sql
+pgfincore--$(EXTVERSION).sql: sql/pgfincore.sql
 	cp $< $@
 
-DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql
+DATA        = pgfincore--unpackaged--$(EXTVERSION).sql pgfincore--$(EXTVERSION).sql
 EXTRA_CLEAN = sql/$(EXTENSION)--$(EXTVERSION).sql
 endif
 
