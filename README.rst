@@ -355,4 +355,11 @@ For example::
 
    set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
 
+SEE ALSO
+========
+
+2ndQuadrant, PostgreSQL Expertise, developement, training and 24x7 support:
+
+  http://2ndQuadrant.fr
+
 
