@@ -1,4 +1,4 @@
-07/XX/2011 Cédric Villemain <cedric@villemain.org>
+07/28/2011 Cédric Villemain <cedric@villemain.org>
   * 1.0.0 - Output varbit containing vector information with pgfincore*()
 		  - Add Debian packaging (Dimitri Fontaine)
 		  - Update to work with PostgreSQL >= 9.1 (Jeff Janes)
