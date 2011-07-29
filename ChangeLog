@@ -1,3 +1,6 @@
+07/XX/2011 Cédric Villemain <cedric@villemain.org>
+  * 1.0.1 - Fix Makefile and remove the dir sql/ (useless and error prone)
+
 07/28/2011 Cédric Villemain <cedric@villemain.org>
   * 1.0.0 - Output varbit containing vector information with pgfincore*()
 		  - Add Debian packaging (Dimitri Fontaine)

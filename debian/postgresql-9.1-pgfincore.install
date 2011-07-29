@@ -1,4 +1,4 @@
 debian/pgfincore-9.1/pgfincore.so usr/lib/postgresql/9.1/lib
 debian/pgfincore-9.1/pgfincore*.sql usr/share/postgresql/9.1/extension
-sql/pgfincore--unpackaged--1.0.sql usr/share/postgresql/9.1/extension
+pgfincore--unpackaged--1.0.sql usr/share/postgresql/9.1/extension
 
