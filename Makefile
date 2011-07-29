@@ -31,11 +31,8 @@ endif
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-PKGNAME = $(EXTENSION)
-PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
-
 deb:
 	PKGVERS=$(PKGVERS) make -f debian/rules debian/control
 	dh clean
-	PKGVERS=$(PKGVERS) make -f debian/rules orig
+	make -f debian/rules orig
 	debuild -us -uc -sa

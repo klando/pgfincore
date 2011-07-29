@@ -18,6 +18,7 @@ export DH_OPTIONS
 
 SRCDIR = $(CURDIR)
 TARGET = $(CURDIR)/debian/pgfincore-%v
+PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
 EXCLUDE = --exclude-vcs --exclude=debian
 
 include /usr/share/postgresql-common/pgxs_debian_control.mk
