@@ -220,8 +220,8 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	 * the segment
 	 */
 	pgfdv->filesize = st.st_size;
-	elog(DEBUG1, "pgfadvise: working on %s of %ld bytes",
-		 filename, (int64) pgfdv->filesize);
+	elog(DEBUG1, "pgfadvise: working on %s of %lld bytes",
+		 filename, (long long int) pgfdv->filesize);
 
 	/* FADVISE_WILLNEED */
 	if (advice == PGF_WILLNEED)
@@ -736,8 +736,8 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			free(vec);
 			munmap(pa, st.st_size);
 			close(fd);
-			elog(ERROR, "mincore(%p, %ld, %p): %s\n",
-			     pa, (int64)st.st_size, vec, strerror(errno));
+			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
+			     pa, (long long int)st.st_size, vec, strerror(errno));
 			return 5;
 		}
 
@@ -765,8 +765,8 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			{
 				pgfncr->pages_mem++;
 				*r |= x;
-				elog (DEBUG5, "in memory blocks : %ld / %ld",
-				      (int64) pageIndex, (int64) pgfncr->rel_os_pages);
+				elog (DEBUG5, "in memory blocks : %lld / %lld",
+				      (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
 				if (flag)
@@ -784,8 +784,8 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			}
 		}
 	}
-	elog(DEBUG1, "pgfincore %s: %ld of %ld block in linux cache, %ld groups",
-	     filename, (int64) pgfncr->pages_mem,  (int64) pgfncr->rel_os_pages, (int64) pgfncr->group_mem);
+	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
+	     filename, (long long int) pgfncr->pages_mem,  (long long int) pgfncr->rel_os_pages, (long long int) pgfncr->group_mem);
 
 	/*
 	 * free and close
