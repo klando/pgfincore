@@ -43,10 +43,10 @@ INSTALL
 
 From source code:: 
 
-  make USE_PGXS=1 clean
-  make USE_PGXS=1
+  make clean
+  make
   su
-  make USE_PGXS=1 install
+  make install
 
 For PostgreSQL >= 9.1, log in your database and::
 
