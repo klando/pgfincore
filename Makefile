@@ -12,7 +12,9 @@ MODULES      = $(EXTENSION)
 DATA         = pgfincore.sql uninstall_pgfincore.sql
 DOCS         = README.rst
 
+ifndef PG_CONFIG
 PG_CONFIG    = pg_config
+endif
 
 PG91         = $(shell $(PG_CONFIG) --version | grep -qE "8\.|9\.0" && echo no || echo yes)
 
