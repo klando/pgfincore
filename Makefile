@@ -32,7 +32,7 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 deb:
-	PKGVERS=$(PKGVERS) make -f debian/rules debian/control
+	make -f debian/rules debian/control
 	dh clean
 	make -f debian/rules orig
 	debuild -us -uc -sa
