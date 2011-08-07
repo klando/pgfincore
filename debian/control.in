@@ -2,8 +2,10 @@ Source: pgfincore
 Section: database
 Priority: extra
 Maintainer: Dimitri Fontaine <dim@tapoueh.org>
-Build-Depends: debhelper (>= 7.0.50), postgresql-server-dev-all, postgresql-server-dev-8.4|postgresql-server-dev-9.0|postgresql-server-dev-9.1
-Standards-Version: 3.9.1
+Build-Depends: debhelper (>= 7.0.50), postgresql-server-dev-all (>= 118)
+Standards-Version: 3.9.2
+Vcs-Git: git://git.postgresql.org/git/pgfincore.git
+Vcs-browser: http://git.postgresql.org/gitweb/?p=pgfincore.git
 Homepage: http://villemain.org/projects/pgfincore
 
 Package: postgresql-PGVERSION-pgfincore
