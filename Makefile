@@ -1,9 +1,3 @@
-ifndef VPATH
-SRCDIR = .
-else
-SRCDIR = $(VPATH)
-endif
-
 EXTENSION    = pgfincore
 EXTVERSION   = $(shell grep default_version $(SRCDIR)/$(EXTENSION).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
