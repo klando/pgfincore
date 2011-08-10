@@ -181,6 +181,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
+#ifdef FIO_HAVE_FADVISE
 /*
  * pgfadvise_file
  */
@@ -278,6 +279,14 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 
 	return 0;
 }
+#else
+static int
+pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
+{
+	elog(ERROR, "POSIX_FADVISE UNSUPPORTED on your platform");
+	return 9;
+}
+#endif
 
 /*
  * pgfadvise is a function that handle the process to have a sharelock
@@ -430,6 +439,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 	}
 }
 
+#ifdef FIO_HAVE_FADVISE
 /*
  * pgfadvise_file
  */
@@ -551,6 +561,16 @@ pgfadvise_loader_file(char *filename,
 
 	return 0;
 }
+#else
+static int
+pgfadvise_loader_file(char *filename,
+					  bool willneed, bool dontneed, VarBit *databit,
+					  pgfloaderStruct *pgfloader)
+{
+	elog(ERROR, "POSIX_FADVISE UNSUPPORTED on your platform");
+	return 9;
+}
+#endif
 
 /*
 *
