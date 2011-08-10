@@ -3,6 +3,8 @@
 		  - Fix the printf of int64 by casting to long long int (i386 and
 		    adm64 behave differently with int64)
 		  - Updated to work with PostgreSQL 8.2 (TAKATSUKA Haruka)
+		  - Improve debian packaging
+		  - Add support for *BSD kernels
 
 07/28/2011 Cédric Villemain <cedric@villemain.org>
   * 1.0.0 - Output varbit containing vector information with pgfincore*()

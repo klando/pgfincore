@@ -6,6 +6,9 @@
  A set of functions to manage pages in memory from PostgreSQL
 --------------------------------------------------------------
 
+A set of functions to handle low-level management of relations using mincore to
+explore cache memory.
+
 DESCRIPTION
 ===========
 
@@ -354,6 +357,15 @@ You can debug the PgFincore with the following error level: *DEBUG1* and
 For example::
 
    set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
+
+LIMITATION
+==========
+
+ * PgFincore needs mincore() and POSIX_FADVISE.
+
+ * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
+
+ * PgFincore needs PostgreSQL >= 8.3
 
 SEE ALSO
 ========
