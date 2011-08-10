@@ -33,7 +33,7 @@
 #error "Unknown postgresql version"
 #endif
 
-#if PG_MAJOR_VERSION != 804 && PG_MAJOR_VERSION != 900 && PG_MAJOR_VERSION != 901
+#if PG_VERSION_NUM < 80300
 #error "Unsupported postgresql version"
 #endif
 
@@ -132,15 +132,59 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 /*
  * We need to add some handler to keep the code clean
- * and support 8.4 and 9.0
- * XXX: and 8.3 ?!
+ * and support 8.3, 8.4 and 9.0
  */
-#if PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
-#define relpathpg(rel, forknum) \
-        relpath((rel)->rd_node, forknum)
+#if PG_MAJOR_VERSION == 803
+char *text_to_cstring(const text *t);
+text *cstring_to_text(const char *s);
+text *cstring_to_text_with_len(const char *s, int len);
+
+char *
+text_to_cstring(const text *t)
+{
+	/* must cast away the const, unfortunately */
+	text       *tunpacked = pg_detoast_datum_packed((struct varlena *) t);
+	int         len = VARSIZE_ANY_EXHDR(tunpacked);
+	char       *result;
+
+	result = (char *) palloc(len + 1);
+	memcpy(result, VARDATA_ANY(tunpacked), len);
+	result[len] = '\0';
+
+	if (tunpacked != t)
+		pfree(tunpacked);
+
+	return result;
+}
+
+text *
+cstring_to_text_with_len(const char *s, int len)
+{
+	text       *result = (text *) palloc(len + VARHDRSZ);
+
+	SET_VARSIZE(result, len + VARHDRSZ);
+	memcpy(VARDATA(result), s, len);
+
+	return result;
+}
+
+text *
+cstring_to_text(const char *s)
+{
+	return cstring_to_text_with_len(s, strlen(s));
+}
+
+#define CStringGetTextDatum(s) PointerGetDatum(cstring_to_text(s))
+#define relpathpg(rel, forkName) \
+        relpath((rel)->rd_node)
+
+#elif PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
+#define relpathpg(rel, forkName) \
+        relpath((rel)->rd_node, forkname_to_number(text_to_cstring(forkName)))
+
 #else
-#define relpathpg(rel, forknum) \
-        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forknum))
+#define relpathpg(rel, forkName) \
+        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #endif
 
 /*
@@ -348,14 +392,8 @@ pgfadvise(PG_FUNCTION_ARGS)
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathpg(fctx->rel,
-									   forkname_to_number(
-										   text_to_cstring(forkName)));
-/*		relpathbackend(fctx->rel->rd_node,
-											fctx->rel->rd_backend,
-											forkname_to_number(
-												text_to_cstring(forkName)));
-*/
+		fctx->relationpath = relpathpg(fctx->rel, forkName);
+
 		/* Here we keep track of current action in all calls */
 		fctx->advice = advice;
 
@@ -363,7 +401,8 @@ pgfadvise(PG_FUNCTION_ARGS)
 		fctx->segcount = 0;
 
 		/* And finally we keep track of our initialization */
-		elog(DEBUG1, "pgfadvise: init done for %s", fctx->relationpath);
+		elog(DEBUG1, "pgfadvise: init done for %s, in fork %s",
+						fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -618,9 +657,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	rel = relation_open(relOid, AccessShareLock);
 
 	/* we get the common part of the filename of each segment of a relation */
-	relationpath = relpathpg(rel,
-							 forkname_to_number(
-								 text_to_cstring(forkName)));
+	relationpath = relpathpg(rel, forkName);
 
 	/*
 	 * If we are looking the first segment,
@@ -653,8 +690,8 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 								   willneed, dontneed, databit,
 								   pgfloader);
 	if (result != 0)
-		elog(ERROR, "Can't read file %s", filename);
-
+		elog(ERROR, "Can't read file %s, fork(%s)",
+					filename, text_to_cstring(forkName));
 	/* Filename */
 	values[0] = CStringGetTextDatum( filename );
 	/* os page size */
@@ -885,15 +922,14 @@ pgfincore(PG_FUNCTION_ARGS)
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathpg(fctx->rel,
-									   forkname_to_number(
-										   text_to_cstring(forkName)));
+		fctx->relationpath = relpathpg(fctx->rel, forkName);
 
 		/* segcount is used to get the next segment of the current relation */
 		fctx->segcount = 0;
 
 		/* And finally we keep track of our initialization */
-		elog(DEBUG1, "pgfincore: init done for %s", fctx->relationpath);
+		elog(DEBUG1, "pgfincore: init done for %s, in fork %s",
+					fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
