@@ -1,4 +1,4 @@
-07/XX/2011 Cédric Villemain <cedric@villemain.org>
+08/XX/2011 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.0.1 - Fix Makefile and remove the dir sql/ (useless and error prone)
 		  - Fix the printf of int64 by casting to long long int (i386 and
 		    adm64 behave differently with int64)

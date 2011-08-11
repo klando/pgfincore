@@ -65,7 +65,7 @@ PgFincore is also shipped with Debian scripts to build your own package::
   aptitude install debhelper postgresql-server-dev-all postgresql-server-dev-9.1
   # or postgresql-server-dev-8.4|postgresql-server-dev-9.0
   make deb
-  dpkg -i ../postgresql-9.1-pgfincore_1.0-1_amd64.deb
+  dpkg -i ../postgresql-9.1-pgfincore_1.1-1_amd64.deb
 
 And if you are a *RPM* user, see: http://pgrpms.org/
 
@@ -358,8 +358,8 @@ For example::
 
    set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
 
-LIMITATION
-==========
+LIMITATIONS
+===========
 
  * PgFincore needs mincore() and POSIX_FADVISE.
 
