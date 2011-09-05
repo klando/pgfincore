@@ -1,3 +1,9 @@
+pgfincore (1.1-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Cédric Villemain <cedric@villemain.org> Thu, 11 Aug 2011 18:51:42 +0200
+
 pgfincore (1.0-1) unstable; urgency=low
 
   * New upstream release

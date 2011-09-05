@@ -33,7 +33,7 @@
 #error "Unknown postgresql version"
 #endif
 
-#if PG_MAJOR_VERSION != 804 && PG_MAJOR_VERSION != 900 && PG_MAJOR_VERSION != 901
+#if PG_VERSION_NUM < 80300
 #error "Unsupported postgresql version"
 #endif
 
@@ -45,7 +45,7 @@ PG_MODULE_MAGIC;
 #define PGSYSCONF_COLS  		3
 #define PGFADVISE_COLS			4
 #define PGFADVISE_LOADER_COLS	5
-#define PGFINCORE_COLS  		7
+#define PGFINCORE_COLS  		8
 
 #define PGF_WILLNEED	10
 #define PGF_DONTNEED	20
@@ -132,15 +132,59 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 /*
  * We need to add some handler to keep the code clean
- * and support 8.4 and 9.0
- * XXX: and 8.3 ?!
+ * and support 8.3, 8.4 and 9.0
  */
-#if PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
-#define relpathpg(rel, forknum) \
-        relpath((rel)->rd_node, forknum)
+#if PG_MAJOR_VERSION == 803
+char *text_to_cstring(const text *t);
+text *cstring_to_text(const char *s);
+text *cstring_to_text_with_len(const char *s, int len);
+
+char *
+text_to_cstring(const text *t)
+{
+	/* must cast away the const, unfortunately */
+	text       *tunpacked = pg_detoast_datum_packed((struct varlena *) t);
+	int         len = VARSIZE_ANY_EXHDR(tunpacked);
+	char       *result;
+
+	result = (char *) palloc(len + 1);
+	memcpy(result, VARDATA_ANY(tunpacked), len);
+	result[len] = '\0';
+
+	if (tunpacked != t)
+		pfree(tunpacked);
+
+	return result;
+}
+
+text *
+cstring_to_text_with_len(const char *s, int len)
+{
+	text       *result = (text *) palloc(len + VARHDRSZ);
+
+	SET_VARSIZE(result, len + VARHDRSZ);
+	memcpy(VARDATA(result), s, len);
+
+	return result;
+}
+
+text *
+cstring_to_text(const char *s)
+{
+	return cstring_to_text_with_len(s, strlen(s));
+}
+
+#define CStringGetTextDatum(s) PointerGetDatum(cstring_to_text(s))
+#define relpathpg(rel, forkName) \
+        relpath((rel)->rd_node)
+
+#elif PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
+#define relpathpg(rel, forkName) \
+        relpath((rel)->rd_node, forkname_to_number(text_to_cstring(forkName)))
+
 #else
-#define relpathpg(rel, forknum) \
-        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forknum))
+#define relpathpg(rel, forkName) \
+        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #endif
 
 /*
@@ -181,6 +225,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
+#ifdef FIO_HAVE_FADVISE
 /*
  * pgfadvise_file
  */
@@ -221,7 +266,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	 */
 	pgfdv->filesize = st.st_size;
 	elog(DEBUG1, "pgfadvise: working on %s of %lld bytes",
-		 filename, (int64) pgfdv->filesize);
+		 filename, (long long int) pgfdv->filesize);
 
 	/* FADVISE_WILLNEED */
 	if (advice == PGF_WILLNEED)
@@ -278,6 +323,14 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 
 	return 0;
 }
+#else
+static int
+pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
+{
+	elog(ERROR, "POSIX_FADVISE UNSUPPORTED on your platform");
+	return 9;
+}
+#endif
 
 /*
  * pgfadvise is a function that handle the process to have a sharelock
@@ -339,14 +392,8 @@ pgfadvise(PG_FUNCTION_ARGS)
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathpg(fctx->rel,
-									   forkname_to_number(
-										   text_to_cstring(forkName)));
-/*		relpathbackend(fctx->rel->rd_node,
-											fctx->rel->rd_backend,
-											forkname_to_number(
-												text_to_cstring(forkName)));
-*/
+		fctx->relationpath = relpathpg(fctx->rel, forkName);
+
 		/* Here we keep track of current action in all calls */
 		fctx->advice = advice;
 
@@ -354,7 +401,8 @@ pgfadvise(PG_FUNCTION_ARGS)
 		fctx->segcount = 0;
 
 		/* And finally we keep track of our initialization */
-		elog(DEBUG1, "pgfadvise: init done for %s", fctx->relationpath);
+		elog(DEBUG1, "pgfadvise: init done for %s, in fork %s",
+						fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -430,6 +478,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 	}
 }
 
+#ifdef FIO_HAVE_FADVISE
 /*
  * pgfadvise_file
  */
@@ -551,6 +600,16 @@ pgfadvise_loader_file(char *filename,
 
 	return 0;
 }
+#else
+static int
+pgfadvise_loader_file(char *filename,
+					  bool willneed, bool dontneed, VarBit *databit,
+					  pgfloaderStruct *pgfloader)
+{
+	elog(ERROR, "POSIX_FADVISE UNSUPPORTED on your platform");
+	return 9;
+}
+#endif
 
 /*
 *
@@ -598,9 +657,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	rel = relation_open(relOid, AccessShareLock);
 
 	/* we get the common part of the filename of each segment of a relation */
-	relationpath = relpathpg(rel,
-							 forkname_to_number(
-								 text_to_cstring(forkName)));
+	relationpath = relpathpg(rel, forkName);
 
 	/*
 	 * If we are looking the first segment,
@@ -632,7 +689,9 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	result = pgfadvise_loader_file(filename,
 								   willneed, dontneed, databit,
 								   pgfloader);
-
+	if (result != 0)
+		elog(ERROR, "Can't read file %s, fork(%s)",
+					filename, text_to_cstring(forkName));
 	/* Filename */
 	values[0] = CStringGetTextDatum( filename );
 	/* os page size */
@@ -735,7 +794,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			munmap(pa, st.st_size);
 			close(fd);
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
-			     pa, (int64)st.st_size, vec, strerror(errno));
+			     pa, (long long int)st.st_size, vec, strerror(errno));
 			return 5;
 		}
 
@@ -764,7 +823,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 				pgfncr->pages_mem++;
 				*r |= x;
 				elog (DEBUG5, "in memory blocks : %lld / %lld",
-				      (int64) pageIndex, (int64) pgfncr->rel_os_pages);
+				      (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
 				if (flag)
@@ -783,7 +842,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		}
 	}
 	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
-	     filename, (int64) pgfncr->pages_mem,  (int64) pgfncr->rel_os_pages, (int64) pgfncr->group_mem);
+	     filename, (long long int) pgfncr->pages_mem,  (long long int) pgfncr->rel_os_pages, (long long int) pgfncr->group_mem);
 
 	/*
 	 * free and close
@@ -863,15 +922,14 @@ pgfincore(PG_FUNCTION_ARGS)
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
 		/* we get the common part of the filename of each segment of a relation */
-		fctx->relationpath = relpathpg(fctx->rel,
-									   forkname_to_number(
-										   text_to_cstring(forkName)));
+		fctx->relationpath = relpathpg(fctx->rel, forkName);
 
 		/* segcount is used to get the next segment of the current relation */
 		fctx->segcount = 0;
 
 		/* And finally we keep track of our initialization */
-		elog(DEBUG1, "pgfincore: init done for %s", fctx->relationpath);
+		elog(DEBUG1, "pgfincore: init done for %s, in fork %s",
+					fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -927,33 +985,35 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* initialize nulls array to build the tuple */
 		memset(nulls, 0, sizeof(nulls));
 
-		/* prepare the number of the next segment */
-		fctx->segcount++;
-
 		/* Filename */
 		values[0] = CStringGetTextDatum(filename);
+		/* Segment Number */
+		values[1] = Int32GetDatum(fctx->segcount);
 		/* os page size */
-		values[1] = Int64GetDatum(pgfncr->pageSize);
+		values[2] = Int64GetDatum(pgfncr->pageSize);
 		/* number of pages used by segment */
-		values[2] = Int64GetDatum(pgfncr->rel_os_pages);
+		values[3] = Int64GetDatum(pgfncr->rel_os_pages);
 		/* number of pages in OS cache */
-		values[3] = Int64GetDatum(pgfncr->pages_mem);
+		values[4] = Int64GetDatum(pgfncr->pages_mem);
 		/* number of group of contigous page in os cache */
-		values[4] = Int64GetDatum(pgfncr->group_mem);
+		values[5] = Int64GetDatum(pgfncr->group_mem);
 		/* free page cache */
-		values[5] = Int64GetDatum(pgfncr->pagesFree);
+		values[6] = Int64GetDatum(pgfncr->pagesFree);
 		/* the map of the file with bit set for in os cache page */
 		if (fctx->getvector && pgfncr->rel_os_pages)
 		{
-			values[6] = VarBitPGetDatum(pgfncr->databit);
+			values[7] = VarBitPGetDatum(pgfncr->databit);
 		}
 		else
 		{
-			nulls[6]  = true;
-			values[6] = (Datum) NULL;
+			nulls[7]  = true;
+			values[7] = (Datum) NULL;
 		}
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
+
+        /* prepare the number of the next segment */
+        fctx->segcount++;
 
 		/* Ok, return results, and go for next call */
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
