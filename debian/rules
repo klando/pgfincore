@@ -29,7 +29,7 @@ override_dh_auto_clean: debian/control
 
 override_dh_auto_build:
 	# build all supported version
-	pg_buildext build $(SRCDIR) $(TARGET) "$(CFLAGS)"
+	+pg_buildext build $(SRCDIR) $(TARGET) "$(CFLAGS)"
 
 override_dh_auto_install: 
 	# then install each of them
