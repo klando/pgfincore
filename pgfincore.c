@@ -225,7 +225,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
-#ifdef FIO_HAVE_FADVISE
+#ifdef USE_POSIX_FADVISE
 /*
  * pgfadvise_file
  */
@@ -478,7 +478,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 	}
 }
 
-#ifdef FIO_HAVE_FADVISE
+#ifdef USE_POSIX_FADVISE
 /*
  * pgfadvise_file
  */
