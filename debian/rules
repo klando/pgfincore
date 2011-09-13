@@ -16,12 +16,13 @@
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
 
-SRCDIR = $(CURDIR)
+export SRCDIR = $(CURDIR)
 TARGET = $(CURDIR)/debian/pgfincore-%v
 PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
 EXCLUDE = --exclude-vcs --exclude=debian
 
 include /usr/share/postgresql-common/pgxs_debian_control.mk
+.PHONY: debian/control
 
 override_dh_auto_clean: debian/control
 	pg_buildext clean $(SRCDIR) $(TARGET) "$(CFLAGS)"
