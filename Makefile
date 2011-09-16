@@ -1,6 +1,5 @@
 EXTENSION    = pgfincore
-EXTVERSION   = $(shell grep default_version $(SRCDIR)/$(EXTENSION).control | \
-               sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
+EXTVERSION   = 1.1
 
 MODULES      = $(EXTENSION)
 DATA         = pgfincore.sql uninstall_pgfincore.sql
