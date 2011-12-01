@@ -11,21 +11,22 @@
 # build-arch and build-indep targets  by Bill Allombert 2001
 
 # Uncomment this to turn on verbose mode.
-#export DH_VERBOSE=1
+# export DH_VERBOSE=1
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
 
-export SRCDIR = $(CURDIR)
-TARGET = $(CURDIR)/debian/pgfincore-%v
+EXTNAME = pgfincore
 PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
 EXCLUDE = --exclude-vcs --exclude=debian
 
+export SRCDIR = $(CURDIR)
+TARGET = $(CURDIR)/debian/$(EXTNAME)-%v
+
 include /usr/share/postgresql-common/pgxs_debian_control.mk
-.PHONY: debian/control
 
 override_dh_auto_clean: debian/control
-	pg_buildext clean $(SRCDIR) $(TARGET) "$(CFLAGS)"
+	+pg_buildext clean $(SRCDIR) $(TARGET)
 	dh_clean 
 
 override_dh_auto_build:
@@ -35,11 +36,14 @@ override_dh_auto_build:
 override_dh_auto_install: 
 	# then install each of them
 	for v in `pg_buildext supported-versions $(SRCDIR)`; do \
-		dh_install -ppostgresql-$$v-pgfincore ;\
+		ls;\
+		dh_install -ppostgresql-$$v-$(EXTNAME) ;\
 	done
 
 orig: clean
-	cd .. && tar czf pgfincore_$(PKGVERS).orig.tar.gz $(EXCLUDE) pgfincore
+	cd .. && tar czf $(EXTNAME)_$(PKGVERS).orig.tar.gz $(EXCLUDE) $(EXTNAME)
 
 %:
 	dh $@
+
+.PHONY: debian/control
