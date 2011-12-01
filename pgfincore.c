@@ -135,6 +135,9 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
  * and support 8.3, 8.4 and 9.0
  */
 #if PG_MAJOR_VERSION == 803
+#if defined(HAVE_DECL_POSIX_FADVISE)
+#define USE_POSIX_FADVISE
+#endif
 char *text_to_cstring(const text *t);
 text *cstring_to_text(const char *s);
 text *cstring_to_text_with_len(const char *s, int len);
@@ -225,7 +228,7 @@ pgsysconf(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
 }
 
-#ifdef USE_POSIX_FADVISE
+#if defined(USE_POSIX_FADVISE)
 /*
  * pgfadvise_file
  */
@@ -478,7 +481,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 	}
 }
 
-#ifdef USE_POSIX_FADVISE
+#if defined(USE_POSIX_FADVISE)
 /*
  * pgfadvise_file
  */
