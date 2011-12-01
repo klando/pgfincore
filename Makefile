@@ -4,9 +4,9 @@ EXTVERSION   = 1.1
 MODULES      = $(EXTENSION)
 DATA         = pgfincore.sql uninstall_pgfincore.sql
 DOCS         = README.rst
+REGRESS      = $(EXTENSION)
 
 PG_CONFIG    = pg_config
-
 PG91         = $(shell $(PG_CONFIG) --version | grep -qE "8\.|9\.0" && echo no || echo yes)
 
 ifeq ($(PG91),yes)
@@ -16,6 +16,7 @@ pgfincore--$(EXTVERSION).sql: pgfincore.sql
 	cp $< $@
 
 DATA        = pgfincore--unpackaged--$(EXTVERSION).sql pgfincore--$(EXTVERSION).sql
+REGRESS     = $(EXTENSION).ext
 EXTRA_CLEAN = $(EXTENSION)--$(EXTVERSION).sql
 endif
 
