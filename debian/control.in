@@ -1,7 +1,8 @@
 Source: pgfincore
 Section: database
 Priority: extra
-Maintainer: Dimitri Fontaine <dim@tapoueh.org>
+Maintainer: Cédric Villemain <cedric@villemain.org>
+Uploaders: Dimitri Fontaine <dim@tapoueh.org>, Christoph Berg <myon@debian.org>
 Build-Depends: debhelper (>= 7.0.50), postgresql-server-dev-all (>= 118)
 Standards-Version: 3.9.2
 Vcs-Git: git://git.postgresql.org/git/pgfincore.git

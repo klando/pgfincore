@@ -1,5 +1,5 @@
 EXTENSION    = pgfincore
-EXTVERSION   = 1.1
+EXTVERSION   = 1.1.1
 EXTCOMMENT   = examine and manage the os buffer cache
 
 MODULES      = $(EXTENSION)
@@ -51,4 +51,4 @@ deb:
 	make -f debian/rules debian/control
 	dh clean
 	make -f debian/rules orig
-	debuild -us -uc -sa
+	debuild -us -uc -sa --source-option="--git-ref=master"

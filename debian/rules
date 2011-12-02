@@ -16,9 +16,8 @@
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
 
-EXTNAME = pgfincore
+EXTNAME = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Source:/ { print substr($$2, 2) }')
 PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
-EXCLUDE = --exclude-vcs --exclude=debian
 
 export SRCDIR = $(CURDIR)
 TARGET = $(CURDIR)/debian/$(EXTNAME)-%v
@@ -38,7 +37,7 @@ override_dh_auto_install:
 	+pg_buildext install $(SRCDIR) $(TARGET) postgresql-%v-$(EXTNAME)
 
 orig: clean
-	cd .. && tar czf $(EXTNAME)_$(PKGVERS).orig.tar.gz $(EXCLUDE) $(EXTNAME)
+	git archive -o ../$(EXTNAME)_$(PKGVERS).orig.tar.gz HEAD
 
 %:
 	dh $@
