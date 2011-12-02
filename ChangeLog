@@ -1,3 +1,8 @@
+09//2011 Cédric Villemain <cedric@2ndQuadrant.fr>
+  * 1.1.1 - Fix Makefile again, as well as debian scripts (VPATH)
+		  - Add checks (make installcheck)
+		  - Improve .gitignore
+
 09/07/2011 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.1.0 - Fix Makefile and remove the dir sql/ (useless and error prone)
 		  - Fix the printf of int64 by casting to long long int (i386 and

@@ -1,0 +1,5 @@
+# EXTENSION extension
+comment = 'EXTCOMMENT'
+default_version = 'EXTVERSION'
+module_pathname = '$libdir/EXTENSION'
+relocatable = true

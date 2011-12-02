@@ -1,3 +1,0 @@
-debian/pgfincore-8.4/pgfincore.so usr/lib/postgresql/8.4/lib
-pgfincore.sql usr/share/postgresql/8.4/contrib
-uninstall_pgfincore.sql usr/share/postgresql/8.4/contrib

@@ -3,3 +3,6 @@ debian/control
 debian/files
 debian/pgfincore-*
 debian/postgresql-*
+results/
+*.so
+pgfincore*.tar.gz
