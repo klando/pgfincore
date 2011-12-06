@@ -19,7 +19,7 @@ filesystem.
 Those functions let you know which and how many disk block from a relation are
 in the page cache of the operating system. It can provide the result as a VarBit
 and can be stored in a table. Then using this table, it is possible to restore
-the page cache state for each block of the relation, even in another node,
+the page cache state for each block of the relation, even in another server,
 thanks to Streaming Replication.
 
 Other functions are used to set a *POSIX_FADVISE* flag on the entire relation
@@ -65,9 +65,13 @@ PgFincore is also shipped with Debian scripts to build your own package::
   aptitude install debhelper postgresql-server-dev-all postgresql-server-dev-9.1
   # or postgresql-server-dev-8.4|postgresql-server-dev-9.0
   make deb
-  dpkg -i ../postgresql-9.1-pgfincore_1.1-1_amd64.deb
+  dpkg -i ../postgresql-9.1-pgfincore_1.1.1-1_amd64.deb
 
-And if you are a *RPM* user, see: http://pgrpms.org/
+PgFincore is packaged for *RPM* at http://yum.postgresql.org/
+PgFincore is packaged for *debian* at http://pgapt.debian.net/
+
+
+
 
 EXAMPLES
 ========
