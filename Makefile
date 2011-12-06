@@ -11,7 +11,7 @@ BUILD_EXTENSION = $(shell $(PG_CONFIG) --version | grep -qE "8\.|9\.0" && echo n
 # Default (no Extension support)
 DATA         = $(EXTENSION).sql uninstall_$(EXTENSION).sql
 REGRESS      = $(EXTENSION)
-pgf_files   := $(DOCS) $(DATA)
+pgext_files   := $(DOCS) $(DATA)
 
 # we need to build with Extension support:
 ifeq ($(BUILD_EXTENSION),yes)
@@ -32,14 +32,22 @@ $(EXTENSION).control: $(EXTENSION).control.in
 DATA        = $(EXTENSION)--unpackaged--$(EXTVERSION).sql $(EXTENSION)--$(EXTVERSION).sql
 REGRESS     = $(EXTENSION).ext
 EXTRA_CLEAN = $(DATA) $(EXTENSION).control
-pgf_files  := $(DOCS)
+pgext_files  := $(DOCS)
 endif
 
 # Workaround for lack of good VPATH support in pgxs for extension/contrib
 ifdef VPATH
-pgf_files_build:= $(addprefix $(CURDIR)/, $(pgf_files))
-all: $(pgf_files_build)
-$(pgf_files_build): $(CURDIR)/%: $(VPATH)/%
+pgext_files_build:= $(addprefix $(CURDIR)/, $(pgext_files))
+pgext_reg_files:= $(addprefix $(CURDIR)/sql/, $(shell ls $(VPATH)/sql))
+pgext_reg_exp:= $(addprefix $(CURDIR)/expected/, $(shell ls $(VPATH)/expected))
+all: $(pgext_files_build) $(pgext_reg_files) $(pgext_reg_exp)
+$(pgext_files_build): $(CURDIR)/%: $(VPATH)/%
+	cp $< $@
+$(pgext_reg_files): $(CURDIR)/sql/%: $(VPATH)/sql/%
+	mkdir -p $(dir $(pgext_reg_files))
+	cp $< $@
+$(pgext_reg_exp): $(CURDIR)/expected/%: $(VPATH)/expected/%
+	mkdir -p $(dir $(pgext_reg_exp))
 	cp $< $@
 endif # VPATH
 
