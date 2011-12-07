@@ -54,6 +54,9 @@ endif # VPATH
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
+pgfoundry:
+	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o $(EXTENSION)-v$(EXTVERSION).tar.gz HEAD
+
 deb:
 	make clean
 	make -f debian/rules debian/control
