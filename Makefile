@@ -21,7 +21,7 @@ all: $(EXTENSION)--$(EXTVERSION).sql $(EXTENSION)--unpackaged--$(EXTVERSION).sql
 $(EXTENSION)--$(EXTVERSION).sql: $(EXTENSION).sql
 			cp $< $@
 
-# this build the extension--unpackaged-version.sql from uninstall_extension.sql
+# this build the extension--unpackaged--version.sql from uninstall_extension.sql
 $(EXTENSION)--unpackaged--$(EXTVERSION).sql: uninstall_$(EXTENSION).sql
 			sed 's/DROP /ALTER EXTENSION $(EXTENSION) ADD /' $< > $@
 
@@ -38,8 +38,8 @@ endif
 # Workaround for lack of good VPATH support in pgxs for extension/contrib
 ifdef VPATH
 pgext_files_build:= $(addprefix $(CURDIR)/, $(pgext_files))
-pgext_reg_files:= $(addprefix $(CURDIR)/sql/, $(shell ls $(VPATH)/sql))
-pgext_reg_exp:= $(addprefix $(CURDIR)/expected/, $(shell ls $(VPATH)/expected))
+pgext_reg_files  := $(addprefix $(CURDIR)/sql/, $(notdir $(wildcard $(VPATH)/sql/*.sql)))
+pgext_reg_exp    := $(addprefix $(CURDIR)/expected/, $(notdir $(wildcard $(VPATH)/expected/*.out)))
 all: $(pgext_files_build) $(pgext_reg_files) $(pgext_reg_exp)
 $(pgext_files_build): $(CURDIR)/%: $(VPATH)/%
 	cp $< $@
