@@ -642,7 +642,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	int       segmentNumber = PG_GETARG_INT32(2);
 	bool      willneed      = PG_GETARG_BOOL(3);
 	bool      dontneed      = PG_GETARG_BOOL(4);
-	VarBit    *databit		= PG_GETARG_VARBIT_P(5);
+	VarBit    *databit;
 
 	/* our structure use to return values */
 	pgfloaderStruct	*pgfloader;
@@ -661,6 +661,11 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Datum		values[PGFADVISE_LOADER_COLS];
 	bool		nulls[PGFADVISE_LOADER_COLS];
+
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "pgfadvise_loader: databit argument shouldn't be NULL");
+	else
+		databit		= PG_GETARG_VARBIT_P(5);
 
 	/* initialize nulls array to build the tuple */
 	memset(nulls, 0, sizeof(nulls));
