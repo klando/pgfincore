@@ -1,4 +1,7 @@
-09//2011 Cédric Villemain <cedric@2ndQuadrant.fr>
+06/21/2012 Cédric Villemain <cedric@2ndQuadrant.fr>
+  * 1.1.2 - Change the open() call to use AllocateFile, and FreeFile
+
+12/06/2011 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.1.1 - Fix Makefile again, as well as debian scripts (VPATH)
 		  - Add checks (make installcheck)
 		  - Improve .gitignore

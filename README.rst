@@ -371,6 +371,8 @@ LIMITATIONS
 
  * PgFincore needs PostgreSQL >= 8.3
 
+ * PgFincore does not work on windows.
+
 SEE ALSO
 ========
 

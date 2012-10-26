@@ -233,15 +233,17 @@ pgsysconf(PG_FUNCTION_ARGS)
  * pgfadvise_file
  */
 static int
-pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
+pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 {
 	/*
-	 * We work directly with the file
-	 * we don't use the postgresql file handler
+	 * We use the AllocateFile(2) provided by PostgreSQL.  We're going to
+	 * close it ourselves even if PostgreSQL close it anyway at transaction
+	 * end.
 	 */
-	struct stat	st;
-	int			fd;
-	int			adviceFlag;
+	FILE	*fp;
+	int	fd;
+	struct stat st;
+	int	    adviceFlag;
 
 	/*
 	 * OS Page size and Free pages
@@ -249,16 +251,18 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	pgfdv->pageSize	= sysconf(_SC_PAGESIZE);
 
 	/*
-	 * Open and fstat file
+	 * Fopen and fstat file
 	 * fd will be provided to posix_fadvise
 	 * if there is no file, just return 1, it is expected to leave the SRF
 	 */
-	fd = open(filename, O_RDONLY);
-	if (fd == -1)
-		return 1;
+	fp = AllocateFile(filename, "rb");
+	if (fp == NULL)
+                return 1;
+
+	fd = fileno(fp);
 	if (fstat(fd, &st) == -1)
 	{
-		close(fd);
+		FreeFile(fp);
 		elog(ERROR, "pgfadvise: Can not stat object file : %s", filename);
 		return 2;
 	}
@@ -317,7 +321,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
 	posix_fadvise(fd, 0, 0, adviceFlag);
 
 	/* close the file */
-	close(fd);
+	FreeFile(fp);
 
 	/*
 	 * OS things : Pages free
@@ -496,11 +500,13 @@ pgfadvise_loader_file(char *filename,
 	int		i, k;
 
 	/*
-	 * We work directly with the file
-	 * we don't use the postgresql file handler
+	 * We use the AllocateFile(2) provided by PostgreSQL.  We're going to
+	 * close it ourselves even if PostgreSQL close it anyway at transaction
+	 * end.
 	 */
-	struct stat	st;
-	int			fd;
+	FILE	*fp;
+	int	fd;
+	struct stat st;
 
 	/*
 	 * OS things : Page size
@@ -516,16 +522,18 @@ pgfadvise_loader_file(char *filename,
 	pgfloader->pagesUnloaded	= 0;
 
 	/*
-	 * Open and fstat file
+	 * Fopen and fstat file
 	 * fd will be provided to posix_fadvise
 	 * if there is no file, just return 1, it is expected to leave the SRF
 	 */
-	fd = open(filename, O_RDONLY);
-	if (fd == -1)
-		return 1;
+	fp = AllocateFile(filename, "rb");
+	if (fp == NULL)
+                return 1;
+
+	fd = fileno(fp);
 	if (fstat(fd, &st) == -1)
 	{
-		close(fd);
+		FreeFile(fp);
 		elog(ERROR, "pgfadvise_loader: Can not stat object file: %s", filename);
 		return 2;
 	}
@@ -594,7 +602,7 @@ pgfadvise_loader_file(char *filename,
 			x <<= 1;
 		}
 	}
-	close(fd);
+	FreeFile(fp);
 
 	/*
 	 * OS things : Pages free
@@ -724,12 +732,16 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	bits8	x = 0;
 	register int64 pageIndex;
 
+
 	/*
-	 * We work directly with the file
-	 * we don't use the postgresql file handler
+	 * We use the AllocateFile(2) provided by PostgreSQL.  We're going to
+	 * close it ourselves even if PostgreSQL close it anyway at transaction
+	 * end.
 	 */
-	struct stat	  st;
-	int			  fd;
+	FILE	*fp;
+	int	fd;
+	struct stat st;
+
 	void 		  *pa  = (char *) 0;
 	unsigned char *vec = (unsigned char *) 0;
 
@@ -746,15 +758,19 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	pgfncr->rel_os_pages	= 0;
 
 	/*
-	* Open, fstat file
-	*/
-	fd = open(filename, O_RDONLY);
-	if (fd == -1)
-		return 1;
+	 * Fopen and fstat file
+	 * fd will be provided to posix_fadvise
+	 * if there is no file, just return 1, it is expected to leave the SRF
+	 */
+	fp = AllocateFile(filename, "rb");
+	if (fp == NULL)
+                return 1;
+
+	fd = fileno(fp);
 
 	if (fstat(fd, &st) == -1)
 	{
-		close(fd);
+		FreeFile(fp);
 		elog(ERROR, "Can not stat object file : %s",
 		     filename);
 		return 2;
@@ -773,7 +789,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
 		if (pa == MAP_FAILED)
 		{
-			close(fd);
+			FreeFile(fp);
 			elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric@villemain.org with '[pgfincore] ENOMEM' as subject.",
 			     filename, errno, strerror(errno));
 			return 3;
@@ -784,7 +800,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		if ((void *)0 == vec)
 		{
 			munmap(pa, st.st_size);
-			close(fd);
+			FreeFile(fp);
 			elog(ERROR, "Can not calloc object file : %s",
 			     filename);
 			return 4;
@@ -795,7 +811,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		{
 			free(vec);
 			munmap(pa, st.st_size);
-			close(fd);
+			FreeFile(fp);
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
 			     pa, (long long int)st.st_size, vec, strerror(errno));
 			return 5;
@@ -852,7 +868,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 */
 	free(vec);
 	munmap(pa, st.st_size);
-	close(fd);
+	FreeFile(fp);
 
 	/*
 	 * OS things : Pages free
