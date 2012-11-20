@@ -1,3 +1,6 @@
+11/20/2012 Cédric Villemain <cedric@2ndQuadrant.fr>
+  *		  - Fix README filename for PGXS
+
 06/21/2012 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.1.2 - Change the open() call to use AllocateFile, and FreeFile
 
