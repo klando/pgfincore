@@ -3,7 +3,8 @@ EXTVERSION   = 1.1.1
 EXTCOMMENT   = examine and manage the os buffer cache
 
 MODULES      = $(EXTENSION)
-DOCS         = README.pgfincore.rst
+MODULE_DIR   = $(EXTENSION)
+DOCS         = README.rst
 
 PG_CONFIG    = pg_config
 BUILD_EXTENSION = $(shell $(PG_CONFIG) --version | grep -qE "8\.|9\.0" && echo no || echo yes)
