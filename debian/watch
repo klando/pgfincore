@@ -1,2 +1,2 @@
 version=3
-http://pgfoundry.org/frs/?group_id=1000444 /frs/download.php/[0-9]+/pgfincore-v([0-9.]+).tar.gz  debian  uupdate
+http://pgfoundry.org/frs/?group_id=1000444 /frs/download.php/[0-9]+/pgfincore-(.*)\.tar\.gz  debian  uupdate

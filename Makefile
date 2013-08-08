@@ -63,4 +63,4 @@ deb:
 	make -f debian/rules debian/control
 	dh clean
 	make -f debian/rules orig
-	debuild -us -uc -sa --source-option="--git-ref=master"
+	debuild -us -uc -sa

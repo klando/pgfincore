@@ -1,3 +1,9 @@
+pgfincore (1.1.1-2) UNRELEASED; urgency=low
+
+  * Switch to dpkg-source 3.0 (quilt) format
+
+ -- Cédric Villemain <cedric@obelix.home>  Thu, 08 Aug 2013 17:58:22 +0200
+
 pgfincore (1.1.1-1) unstable; urgency=low
 
   * New upstream release
