@@ -3,7 +3,7 @@ EXTVERSION   = 1.1.1
 EXTCOMMENT   = examine and manage the os buffer cache
 
 MODULES      = $(EXTENSION)
-MODULE_DIR   = $(EXTENSION)
+MODULEDIR    = $(EXTENSION)
 DOCS         = README.rst
 
 PG_CONFIG    = pg_config
