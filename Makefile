@@ -1,5 +1,5 @@
 EXTENSION    = pgfincore
-EXTVERSION   = 1.1.1
+EXTVERSION   = 1.1.2
 EXTCOMMENT   = examine and manage the os buffer cache
 
 MODULES      = $(EXTENSION)
@@ -55,10 +55,10 @@ endif # VPATH
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-pgfoundry:
-	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o $(EXTENSION)-v$(EXTVERSION).tar.gz HEAD
+dist:
+	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o ../$(EXTENSION)_$(EXTVERSION).orig.tar.gz HEAD
 
-deb:
+deb: dist
 	make clean
 	make -f debian/rules debian/control
 	dh clean
