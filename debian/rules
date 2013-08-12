@@ -19,8 +19,8 @@ export DH_OPTIONS
 EXTNAME = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Source:/ { print substr($$2, 2) }')
 PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
 
-export SRCDIR = $(CURDIR)
-TARGET = $(CURDIR)/debian/$(EXTNAME)-%v
+SRCDIR = $(CURDIR)
+TARGET = build-$(EXTNAME)-%v
 
 include /usr/share/postgresql-common/pgxs_debian_control.mk
 
@@ -30,7 +30,7 @@ override_dh_auto_clean: debian/control
 
 override_dh_auto_build:
 	# build all supported version
-	+pg_buildext build $(SRCDIR) $(TARGET) "$(CFLAGS)"
+	+pg_buildext build $(SRCDIR) $(TARGET)
 
 override_dh_auto_install: 
 	# then install each of them
