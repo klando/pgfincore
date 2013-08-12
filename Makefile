@@ -58,7 +58,7 @@ include $(PGXS)
 dist:
 	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o ../$(EXTENSION)_$(EXTVERSION).orig.tar.gz HEAD
 
-deb: dist
+deb:
 	make clean
 	make -f debian/rules debian/control
 	dh clean
