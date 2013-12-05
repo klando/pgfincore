@@ -49,7 +49,7 @@ endif
 # FIX HERE before PostgreSQL got the backpatch and push the latest minor, can remove this part when done
 ifeq ($(BUILD_EXTENSION),yes)
 
-install: all installdirs installcontrol installdata installdocs installscripts
+install: all installcontrol installdata installdocs installscripts | installdirs
 ifdef MODULES
 	$(INSTALL_SHLIB) $(addsuffix $(DLSUFFIX), $(MODULES)) '$(DESTDIR)$(pkglibdir)/'
 endif # MODULES
