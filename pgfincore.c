@@ -37,6 +37,11 @@
 #error "Unsupported postgresql version"
 #endif
 
+#if PG_VERSION_NUM > 90299
+#include "access/htup_details.h" /* 9.3 heap_form_tuple */
+#include "common/relpath.h" /* 9.3 relpathbackend */
+#endif
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
