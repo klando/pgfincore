@@ -9,5 +9,6 @@ for v in $(pg_buildext supported-versions); do
 			echo "**** regression.diffs ****"
 			cat regression.diffs
 		fi
+		exit 1
 	fi
 done
