@@ -1,0 +1,2 @@
+version=3
+https://github.com/klando/pgfincore/releases /klando/pgfincore/archive/(.*).tar.gz

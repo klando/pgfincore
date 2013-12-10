@@ -1,8 +1,13 @@
 pgfincore (1.1.2) UNRELEASED; urgency=low
 
+  [ Cédric Villemain ]
   * Switch to dpkg-source 3.0 (native) format
 
- -- Cédric Villemain <cedric@villemain.org>  Thu, 08 Aug 2013 17:58:22 +0200
+  [ Christoph Berg ]
+  * Add autopkgtest support.
+  * Add watch file looking for releases on github.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Tue, 10 Dec 2013 14:53:20 +0100
 
 pgfincore (1.1.1-1) unstable; urgency=low
 
