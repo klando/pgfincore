@@ -51,6 +51,17 @@ select true from pgfadvise_loader('test', 0, false, false, B'1010');
  t
 (1 row)
 
+-- must not fail on empty databit input
+select true from pgfadvise_loader('test', 0, false, false, B'');
+ bool 
+------
+ t
+(1 row)
+
+-- ERROR on NULL databit input
+select true from pgfadvise_loader('test', 0, false, false, NULL);
+ERROR:  pgfadvise_loader: databit argument shouldn't be NULL
+CONTEXT:  SQL function "pgfadvise_loader" statement 1
 --
 -- test pgfincore
 --

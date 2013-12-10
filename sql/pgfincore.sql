@@ -27,9 +27,10 @@ select true from pgfadvise_loader('test', 0, true, true, B'1010');
 select true from pgfadvise_loader('test', 0, true, false, B'1010');
 select true from pgfadvise_loader('test', 0, false, true, B'1010');
 select true from pgfadvise_loader('test', 0, false, false, B'1010');
--- must not fail on NULL or empty
-select true from pgfadvise_loader('test', 0, false, false, NULL);
+-- must not fail on empty databit input
 select true from pgfadvise_loader('test', 0, false, false, B'');
+-- ERROR on NULL databit input
+select true from pgfadvise_loader('test', 0, false, false, NULL);
 
 --
 -- test pgfincore
