@@ -1,5 +1,8 @@
-11/20/2012 Cédric Villemain <cedric@2ndQuadrant.fr>
-  *		  - Fix README filename for PGXS
+12/10/2013 Cédric Villemain <cedric@2ndQuadrant.fr>
+  * 1.2	  - Fix README filename for PGXS
+  		  - Update to PostgreSQL 9.3
+          - Fix faillure on NULL input (pgfadvise_loader)
+          - Several fixes and layout changes
 
 06/21/2012 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.1.2 - Change the open() call to use AllocateFile, and FreeFile
