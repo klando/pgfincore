@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+for v in $(pg_buildext supported-versions); do
+	if ! pg_virtualenv -v $v \
+		make installcheck PG_CONFIG=/usr/lib/postgresql/$v/bin/pg_config; then
+		if [ -r regression.diffs ]; then
+			echo "**** regression.diffs ****"
+			cat regression.diffs
+		fi
+	fi
+done
