@@ -13,7 +13,7 @@ clean: debian/control
 
 override_dh_auto_clean:
 	+pg_buildext clean $(SRCDIR) $(TARGET)
-	dh_clean 
+	$(MAKE) clean
 
 override_dh_auto_build:
 	# build all supported version
