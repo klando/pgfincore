@@ -1,5 +1,5 @@
 12/10/2013 Cédric Villemain <cedric@2ndQuadrant.fr>
-  * 1.2	  - Fix README filename for PGXS
+  * 1.1.2 - Fix README filename for PGXS
   		  - Update to PostgreSQL 9.3
           - Fix faillure on NULL input (pgfadvise_loader)
           - Several fixes and layout changes
