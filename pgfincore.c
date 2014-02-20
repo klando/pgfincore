@@ -50,13 +50,20 @@ PG_MODULE_MAGIC;
 #define PGSYSCONF_COLS  		3
 #define PGFADVISE_COLS			4
 #define PGFADVISE_LOADER_COLS	5
+#ifndef HAVE_FINCORE
 #define PGFINCORE_COLS  		8
+#else
+#define PGFINCORE_COLS  		10
+#endif
 
 #define PGF_WILLNEED	10
 #define PGF_DONTNEED	20
 #define PGF_NORMAL		30
 #define PGF_SEQUENTIAL	40
 #define PGF_RANDOM		50
+
+#define FINCORE_PRESENT 0x1
+#define FINCORE_DIRTY   0x2
 
 /*
  * pgfadvise_fctx structure is needed
@@ -118,6 +125,10 @@ typedef struct
 	size_t	rel_os_pages;
 	size_t	pages_mem;
 	size_t	group_mem;
+#ifdef HAVE_FINCORE
+	size_t	pages_dirty;
+	size_t	group_dirty;
+#endif
 	VarBit	*databit;
 } pgfincoreStruct;
 
@@ -736,6 +747,9 @@ static int
 pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 {
 	int		flag=1;
+#ifdef HAVE_FINCORE
+	int		flag_dirty=1;
+#endif
 
 	int		len, bitlen;
 	bits8	*r;
@@ -765,6 +779,10 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 */
 	pgfncr->pages_mem		= 0;
 	pgfncr->group_mem		= 0;
+#ifdef HAVE_FINCORE
+	pgfncr->pages_dirty		= 0;
+	pgfncr->group_dirty		= 0;
+#endif
 	pgfncr->rel_os_pages	= 0;
 
 	/*
@@ -830,7 +848,11 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/*
 		 * prepare the bit string
 		 */
+#ifndef HAVE_FINCORE
 		bitlen = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
+#else
+		bitlen = 2 * ((st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
+#endif
 		len = VARBITTOTALLEN(bitlen);
 		/*
 		 * set to 0 so that *r is always initialised and string is zero-padded
@@ -847,10 +869,23 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		for (pageIndex = 0; pageIndex <= pgfncr->rel_os_pages; pageIndex++)
 		{
 			// block in memory
-			if (vec[pageIndex] & 1)
+			if (vec[pageIndex] & FINCORE_PRESENT)
 			{
 				pgfncr->pages_mem++;
 				*r |= x;
+#ifdef HAVE_FINCORE
+				if (vec[pageIndex] & FINCORE_DIRTY)
+				{
+				  pgfncr->pages_dirty++;
+				  *r |= (x >> 1);
+				  /* we flag to detect contigous blocks in the same state */
+				  if (flag_dirty)
+					pgfncr->group_dirty++;
+				  flag_dirty = 0;
+				}
+				else
+				  flag_dirty = 1;
+#endif
 				elog (DEBUG5, "in memory blocks : %lld / %lld",
 				      (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
 
@@ -862,7 +897,11 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			else
 				flag=1;
 
+
 			x >>= 1;
+#ifdef HAVE_FINCORE
+			x >>= 1;
+#endif
 			if (x == 0)
 			{
 				x = HIGHBIT;
@@ -1038,6 +1077,12 @@ pgfincore(PG_FUNCTION_ARGS)
 			nulls[7]  = true;
 			values[7] = (Datum) NULL;
 		}
+#ifdef HAVE_FINCORE
+		/* number of pages dirty in OS cache */
+		values[8] = Int64GetDatum(pgfncr->pages_dirty);
+		/* number of group of contigous dirty pages in os cache */
+		values[9] = Int64GetDatum(pgfncr->group_dirty);
+#endif
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 

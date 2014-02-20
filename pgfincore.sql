@@ -122,7 +122,9 @@ pgfincore(IN regclass, IN text, IN bool,
 		  OUT pages_mem bigint,
 		  OUT group_mem bigint,
 		  OUT os_pages_free bigint,
-		  OUT databit      varbit)
+		  OUT databit      varbit,
+		  OUT pages_dirty bigint,
+		  OUT group_dirty bigint)
 RETURNS setof record
 AS '$libdir/pgfincore'
 LANGUAGE C;
@@ -136,7 +138,9 @@ pgfincore(IN regclass, IN bool,
 		  OUT pages_mem bigint,
 		  OUT group_mem bigint,
 		  OUT os_pages_free bigint,
-		  OUT databit      varbit)
+		  OUT databit      varbit,
+		  OUT pages_dirty bigint,
+		  OUT group_dirty bigint)
 RETURNS setof record
 AS 'SELECT * from pgfincore($1, ''main'', $2)'
 LANGUAGE SQL;
@@ -150,7 +154,9 @@ pgfincore(IN regclass,
 		  OUT pages_mem bigint,
 		  OUT group_mem bigint,
 		  OUT os_pages_free bigint,
-		  OUT databit      varbit)
+		  OUT databit      varbit,
+		  OUT pages_dirty bigint,
+		  OUT group_dirty bigint)
 RETURNS setof record
 AS 'SELECT * from pgfincore($1, ''main'', false)'
 LANGUAGE SQL;
