@@ -15,6 +15,8 @@
 #include <fcntl.h>  /* fadvise */
 /* } */
 
+#include "fincore.h"
+
 /* { PostgreSQL stuff */
 #include "postgres.h" /* general Postgres declarations */
 #include "access/heapam.h" /* relation_open */
@@ -766,7 +768,9 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	int	fd;
 	struct stat st;
 
+#ifndef HAVE_FINCORE
 	void 		  *pa  = (char *) 0;
+#endif
 	unsigned char *vec = (unsigned char *) 0;
 
 	/*
@@ -813,7 +817,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/* number of pages in the current file */
 		pgfncr->rel_os_pages = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
 
-		/* TODO We need to split mmap size to be sure (?) to be able to mmap */
+#ifndef HAVE_FINCORE
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
 		if (pa == MAP_FAILED)
 		{
@@ -822,26 +826,40 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			     filename, errno, strerror(errno));
 			return 3;
 		}
+#endif
 
 		/* Prepare our vector containing all blocks information */
 		vec = calloc(1, (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
 		if ((void *)0 == vec)
 		{
+#ifndef HAVE_FINCORE
 			munmap(pa, st.st_size);
+#endif
 			FreeFile(fp);
 			elog(ERROR, "Can not calloc object file : %s",
 			     filename);
 			return 4;
 		}
 
+#ifndef HAVE_FINCORE
 		/* Affect vec with mincore */
 		if (mincore(pa, st.st_size, vec) != 0)
 		{
-			free(vec);
 			munmap(pa, st.st_size);
+#else
+		/* Affect vec with mincore */
+			if (fincore(fd, 0, st.st_size, vec) != 0)
+		{
+#endif
+			free(vec);
 			FreeFile(fp);
+#ifndef HAVE_FINCORE
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
 			     pa, (long long int)st.st_size, vec, strerror(errno));
+#else
+			elog(ERROR, "fincore(%u, 0, %lld, %p): %s\n",
+			     fd, (long long int)st.st_size, vec, strerror(errno));
+#endif
 			return 5;
 		}
 
@@ -916,7 +934,9 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 * free and close
 	 */
 	free(vec);
+#ifndef HAVE_FINCORE
 	munmap(pa, st.st_size);
+#endif
 	FreeFile(fp);
 
 	/*
