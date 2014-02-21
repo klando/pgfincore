@@ -161,4 +161,10 @@ RETURNS setof record
 AS 'SELECT * from pgfincore($1, ''main'', false)'
 LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION
+pgfincore_drawer(IN varbit,
+		  OUT drawer cstring)
+RETURNS cstring
+AS '$libdir/pgfincore'
+LANGUAGE C;
 

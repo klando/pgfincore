@@ -148,6 +148,12 @@ static int	pgfadvise_loader_file(char *filename,
 Datum		pgfincore(PG_FUNCTION_ARGS);
 static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
+
+#ifdef HAVE_FINCORE
+Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
+#endif
+
+
 /*
  * We need to add some handler to keep the code clean
  * and support 8.3, 8.4 and 9.0
@@ -1113,3 +1119,68 @@ pgfincore(PG_FUNCTION_ARGS)
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
 }
+
+#ifdef HAVE_FINCORE
+/*
+ * pgfincore_drawer A very naive renderer. (for testing)
+ */
+PG_FUNCTION_INFO_V1(pgfincore_drawer);
+Datum
+pgfincore_drawer(PG_FUNCTION_ARGS)
+{
+        char *result,
+             *r;
+	int  len,i,k;
+	VarBit *databit;
+	bits8 *sp;
+	bits8 x;
+
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "pgfincore_drawer: databit argument shouldn't be NULL");
+	else
+		databit	= PG_GETARG_VARBIT_P(0);
+
+	len =  VARBITLEN(databit);
+	result = (char *) palloc((len/2) + 1);
+	sp = VARBITS(databit);
+	r = result;
+
+	for (i = 0; i <= len - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
+	{
+		x = *sp;
+		/*  Is this bit set ? */
+		for (k = 0; k < (BITS_PER_BYTE/2); k++)
+		{
+		  char out = ' ';
+			if (IS_HIGHBIT_SET(x))
+			  out = '.' ;
+			x <<= 1;
+			if (IS_HIGHBIT_SET(x))
+			  out = '*';
+			x <<= 1;
+			*r++ = out;
+		}
+	}
+	if (i < len)
+	{
+		/* print the last partial byte */
+		x = *sp;
+		for (k = i; k < (len/2); k++)
+		{
+		        char out = ' ';
+			if (IS_HIGHBIT_SET(x))
+			  out = '.' ;
+			x <<= 1;
+			if (IS_HIGHBIT_SET(x))
+			  out = '*';
+			x <<= 1;
+			*r++ = out;
+		}
+	}
+
+
+	*r = '\0';
+        PG_RETURN_CSTRING(result);
+}
+
+#endif
