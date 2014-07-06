@@ -1,11 +1,11 @@
-pgfincore (1.1.2-2) UNRELEASED; urgency=medium
+pgfincore (1.1.2-2) experimental; urgency=medium
 
   * Use "all" in debian/pgversions.
   * B-D on pg-common 158 to build against 9.3 and 9.4.
   * Use pg_buildext installcheck.
   * Set team as maintainer.
 
- -- Christoph Berg <christoph.berg@credativ.de>  Tue, 10 Dec 2013 16:51:01 +0100
+ -- Christoph Berg <myon@debian.org>  Sun, 06 Jul 2014 18:32:22 +0200
 
 pgfincore (1.1.2-1) unstable; urgency=low
 
