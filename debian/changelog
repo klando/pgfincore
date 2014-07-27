@@ -1,3 +1,9 @@
+pgfincore (1.1.2-3) unstable; urgency=medium
+
+  * Upload to unstable for 9.4.
+
+ -- Christoph Berg <myon@debian.org>  Sun, 27 Jul 2014 11:16:09 +0200
+
 pgfincore (1.1.2-2) experimental; urgency=medium
 
   * Use "all" in debian/pgversions.
