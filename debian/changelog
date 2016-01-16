@@ -1,6 +1,7 @@
 pgfincore (1.1.2-4) UNRELEASED; urgency=medium
 
   * Build for PostgreSQL 9.5. (Closes: #811134)
+  * Bump Standards-Version to 3.9.6 (no changes needed).
 
  -- Martin Pitt <mpitt@debian.org>  Sat, 16 Jan 2016 11:38:47 +0100
 
