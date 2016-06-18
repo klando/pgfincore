@@ -15,4 +15,4 @@ DROP FUNCTION pgfadvise_loader(regclass, int, bool, bool, varbit);
 DROP FUNCTION pgfincore(regclass);
 DROP FUNCTION pgfincore(regclass, bool);
 DROP FUNCTION pgfincore(regclass, text, bool);
-
+DROP FUNCTION pgfincore_drawer(varbit);

@@ -84,10 +84,10 @@ Get current state of a relation
 May be useful::
 
    cedric=# select * from pgfincore('pgbench_accounts');
-         relpath       | segment | os_page_size | rel_os_pages | pages_mem | group_mem | os_pages_free | databit 
-   --------------------+---------+--------------+--------------+-----------+-----------+---------------+---------
-    base/11874/16447   |       0 |         4096 |       262144 |    262144 |         1 |         81016 | 
-    base/11874/16447.1 |       1 |         4096 |        65726 |     65726 |         1 |         81016 | 
+         relpath       | segment | os_page_size | rel_os_pages | pages_mem | group_mem | os_pages_free | databit | pages_dirty | group_dirty 
+   --------------------+---------+--------------+--------------+-----------+-----------+---------------+---------+-------------+-------------
+    base/11874/16447   |       0 |         4096 |       262144 |    262144 |         1 |         81016 |         |           0 |           0
+    base/11874/16447.1 |       1 |         4096 |        65726 |     65726 |         1 |         81016 |         |           0 |           0
    (2 rows)
    
    Time: 31.563 ms
@@ -207,21 +207,24 @@ SYNOPSIS
              OUT relpath text, OUT segment int, OUT os_page_size bigint,
              OUT rel_os_pages bigint, OUT pages_mem bigint,
              OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit      varbit)
+             OUT databit varbit, OUT pages_dirty bigint,
+             OUT group_dirty bigint)
      RETURNS setof record
 
    pgfincore(IN relname regclass, IN getdatabit bool,
              OUT relpath text, OUT segment int, OUT os_page_size bigint,
              OUT rel_os_pages bigint, OUT pages_mem bigint,
              OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit      varbit)
+             OUT databit varbit, OUT pages_dirty bigint,
+             OUT group_dirty bigint)
      RETURNS setof record
 
    pgfincore(IN relname regclass,
              OUT relpath text, OUT segment int, OUT os_page_size bigint,
              OUT rel_os_pages bigint, OUT pages_mem bigint,
              OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit      varbit)
+             OUT databit varbit, OUT pages_dirty bigint,
+             OUT group_dirty bigint)
      RETURNS setof record
 
 DOCUMENTATION
@@ -334,10 +337,10 @@ This function provide information about the file system cache (page cache).
 ::
 
    cedric=# select * from pgfincore('pgbench_accounts');
-         relpath       | segment | os_page_size | rel_os_pages | pages_mem | group_mem | os_pages_free | databit 
-   --------------------+---------+--------------+--------------+-----------+-----------+---------------+---------
-    base/11874/16447   |       0 |         4096 |       262144 |         3 |         1 |        408444 | 
-    base/11874/16447.1 |       1 |         4096 |        65726 |         0 |         0 |        408444 | 
+         relpath       | segment | os_page_size | rel_os_pages | pages_mem | group_mem | os_pages_free | databit | pages_dirty | group_dirty  
+   --------------------+---------+--------------+--------------+-----------+-----------+---------------+---------+-------------+-------------
+    base/11874/16447   |       0 |         4096 |       262144 |         3 |         1 |        408444 |         |           0 |           0
+    base/11874/16447.1 |       1 |         4096 |        65726 |         0 |         0 |        408444 |         |           0 |           0
 
 For the specified relation it returns:
 
@@ -351,6 +354,8 @@ For the specified relation it returns:
   * os_page_free : the number of free page in the OS page cache
   * databit : the varbit map of the file, because of its size it is useless to output
     Use pgfincore('pgbench_accounts',true) to activate it.
+  * pages_dirty : if HAVE_FINCORE constant is define and the platorm provides the relevant information, like pages_mem but for dirtied pages 
+  * group_dirty : if HAVE_FINCORE constant is define and the platorm provides the relevant information, like group_mem but for dirtied pages 
 
 DEBUG
 =====
@@ -362,10 +367,13 @@ For example::
 
    set client_min_messages TO debug1; -- debug5 is only usefull to trace each block
 
+REQUIREMENTS
+============
+
+ * PgFincore needs mincore() or fincore() and POSIX_FADVISE
+
 LIMITATIONS
 ===========
-
- * PgFincore needs mincore() and POSIX_FADVISE.
 
  * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
 
@@ -378,6 +386,6 @@ SEE ALSO
 
 2ndQuadrant, PostgreSQL Expertise, developement, training and 24x7 support:
 
-  http://2ndQuadrant.fr
+  http://2ndQuadrant.com
 
 

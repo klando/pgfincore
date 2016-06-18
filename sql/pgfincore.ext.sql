@@ -47,3 +47,7 @@ select true from pgfadvise_sequential('test');
 select true from pgfadvise_random('test');
 select true from pgfadvise_normal('test');
 
+--
+-- tests drawers
+--
+select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);

@@ -15,8 +15,6 @@
 #include <fcntl.h>  /* fadvise */
 /* } */
 
-#include "fincore.h"
-
 /* { PostgreSQL stuff */
 #include "postgres.h" /* general Postgres declarations */
 #include "access/heapam.h" /* relation_open */
@@ -52,11 +50,7 @@ PG_MODULE_MAGIC;
 #define PGSYSCONF_COLS  		3
 #define PGFADVISE_COLS			4
 #define PGFADVISE_LOADER_COLS	5
-#ifndef HAVE_FINCORE
-#define PGFINCORE_COLS  		8
-#else
 #define PGFINCORE_COLS  		10
-#endif
 
 #define PGF_WILLNEED	10
 #define PGF_DONTNEED	20
@@ -66,6 +60,7 @@ PG_MODULE_MAGIC;
 
 #define FINCORE_PRESENT 0x1
 #define FINCORE_DIRTY   0x2
+#define FINCORE_BITS    2
 
 /*
  * pgfadvise_fctx structure is needed
@@ -127,10 +122,8 @@ typedef struct
 	size_t	rel_os_pages;
 	size_t	pages_mem;
 	size_t	group_mem;
-#ifdef HAVE_FINCORE
 	size_t	pages_dirty;
 	size_t	group_dirty;
-#endif
 	VarBit	*databit;
 } pgfincoreStruct;
 
@@ -148,11 +141,7 @@ static int	pgfadvise_loader_file(char *filename,
 Datum		pgfincore(PG_FUNCTION_ARGS);
 static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
-
-#ifdef HAVE_FINCORE
 Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
-#endif
-
 
 /*
  * We need to add some handler to keep the code clean
@@ -755,9 +744,7 @@ static int
 pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 {
 	int		flag=1;
-#ifdef HAVE_FINCORE
 	int		flag_dirty=1;
-#endif
 
 	int		len, bitlen;
 	bits8	*r;
@@ -789,10 +776,8 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 */
 	pgfncr->pages_mem		= 0;
 	pgfncr->group_mem		= 0;
-#ifdef HAVE_FINCORE
 	pgfncr->pages_dirty		= 0;
 	pgfncr->group_dirty		= 0;
-#endif
 	pgfncr->rel_os_pages	= 0;
 
 	/*
@@ -852,31 +837,24 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		if (mincore(pa, st.st_size, vec) != 0)
 		{
 			munmap(pa, st.st_size);
-#else
-		/* Affect vec with mincore */
-			if (fincore(fd, 0, st.st_size, vec) != 0)
-		{
-#endif
-			free(vec);
-			FreeFile(fp);
-#ifndef HAVE_FINCORE
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
 			     pa, (long long int)st.st_size, vec, strerror(errno));
 #else
+		/* Affect vec with fincore */
+		if (fincore(fd, 0, st.st_size, vec) != 0)
+		{
 			elog(ERROR, "fincore(%u, 0, %lld, %p): %s\n",
 			     fd, (long long int)st.st_size, vec, strerror(errno));
 #endif
+			free(vec);
+			FreeFile(fp);
 			return 5;
 		}
 
 		/*
 		 * prepare the bit string
 		 */
-#ifndef HAVE_FINCORE
-		bitlen = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
-#else
-		bitlen = 2 * ((st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
-#endif
+		bitlen = FINCORE_BITS * ((st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
 		len = VARBITTOTALLEN(bitlen);
 		/*
 		 * set to 0 so that *r is always initialised and string is zero-padded
@@ -897,19 +875,20 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 			{
 				pgfncr->pages_mem++;
 				*r |= x;
-#ifdef HAVE_FINCORE
-				if (vec[pageIndex] & FINCORE_DIRTY)
+				if (FINCORE_BITS > 1)
 				{
-				  pgfncr->pages_dirty++;
-				  *r |= (x >> 1);
-				  /* we flag to detect contigous blocks in the same state */
-				  if (flag_dirty)
-					pgfncr->group_dirty++;
-				  flag_dirty = 0;
+					if (vec[pageIndex] & FINCORE_DIRTY)
+					{
+						pgfncr->pages_dirty++;
+						*r |= (x >> 1);
+						/* we flag to detect contigous blocks in the same state */
+						if (flag_dirty)
+							pgfncr->group_dirty++;
+						flag_dirty = 0;
+					}
+					else
+						flag_dirty = 1;
 				}
-				else
-				  flag_dirty = 1;
-#endif
 				elog (DEBUG5, "in memory blocks : %lld / %lld",
 				      (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
 
@@ -922,10 +901,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 				flag=1;
 
 
-			x >>= 1;
-#ifdef HAVE_FINCORE
-			x >>= 1;
-#endif
+			x >>= FINCORE_BITS;
 			if (x == 0)
 			{
 				x = HIGHBIT;
@@ -1103,12 +1079,10 @@ pgfincore(PG_FUNCTION_ARGS)
 			nulls[7]  = true;
 			values[7] = (Datum) NULL;
 		}
-#ifdef HAVE_FINCORE
 		/* number of pages dirty in OS cache */
 		values[8] = Int64GetDatum(pgfncr->pages_dirty);
 		/* number of group of contigous dirty pages in os cache */
 		values[9] = Int64GetDatum(pgfncr->group_dirty);
-#endif
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
@@ -1120,7 +1094,6 @@ pgfincore(PG_FUNCTION_ARGS)
 	}
 }
 
-#ifdef HAVE_FINCORE
 /*
  * pgfincore_drawer A very naive renderer. (for testing)
  */
@@ -1141,7 +1114,7 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 		databit	= PG_GETARG_VARBIT_P(0);
 
 	len =  VARBITLEN(databit);
-	result = (char *) palloc((len/2) + 1);
+	result = (char *) palloc((len/FINCORE_BITS) + 1);
 	sp = VARBITS(databit);
 	r = result;
 
@@ -1149,15 +1122,18 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	{
 		x = *sp;
 		/*  Is this bit set ? */
-		for (k = 0; k < (BITS_PER_BYTE/2); k++)
+		for (k = 0; k < (BITS_PER_BYTE/FINCORE_BITS); k++)
 		{
 		  char out = ' ';
 			if (IS_HIGHBIT_SET(x))
 			  out = '.' ;
 			x <<= 1;
-			if (IS_HIGHBIT_SET(x))
-			  out = '*';
-			x <<= 1;
+			if (FINCORE_BITS > 1)
+			{
+				if (IS_HIGHBIT_SET(x))
+					out = '*';
+				x <<= 1;
+			}
 			*r++ = out;
 		}
 	}
@@ -1165,22 +1141,22 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	{
 		/* print the last partial byte */
 		x = *sp;
-		for (k = i; k < (len/2); k++)
+		for (k = i; k < (len/FINCORE_BITS); k++)
 		{
 		        char out = ' ';
 			if (IS_HIGHBIT_SET(x))
 			  out = '.' ;
 			x <<= 1;
-			if (IS_HIGHBIT_SET(x))
-			  out = '*';
-			x <<= 1;
+			if (FINCORE_BITS > 1)
+			{
+				if (IS_HIGHBIT_SET(x))
+					out = '*';
+				x <<= 1;
+			}
 			*r++ = out;
 		}
 	}
 
-
 	*r = '\0';
-        PG_RETURN_CSTRING(result);
+	PG_RETURN_CSTRING(result);
 }
-
-#endif
