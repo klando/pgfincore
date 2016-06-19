@@ -60,8 +60,11 @@ PG_MODULE_MAGIC;
 
 #define FINCORE_PRESENT 0x1
 #define FINCORE_DIRTY   0x2
+#ifndef HAVE_FINCORE
+#define FINCORE_BITS    1
+#else
 #define FINCORE_BITS    2
-
+#endif
 /*
  * pgfadvise_fctx structure is needed
  * to keep track of relation path, segment number, ...
