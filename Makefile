@@ -18,7 +18,8 @@ dist:
 
 deb:
 	make clean
+	pg_buildext updatecontrol
 	make -f debian/rules debian/control
 	dh clean
-	make -f debian/rules orig
-	debuild -us -uc -sa
+	make dist
+	dpkg-buildpackage -us -uc

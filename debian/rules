@@ -1,32 +1,21 @@
 #!/usr/bin/make -f
-# -*- makefile -*-
-
-EXTNAME = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Source:/ { print substr($$2, 2) }')
-PKGVERS = $(shell dpkg-parsechangelog | awk -F '[:-]' '/^Version:/ { print substr($$2, 2) }')
-
-SRCDIR = $(CURDIR)
-TARGET = build-$(EXTNAME)-%v
 
 include /usr/share/postgresql-common/pgxs_debian_control.mk
-clean: debian/control
-.PHONY: debian/control
-
-override_dh_auto_clean:
-	+pg_buildext clean $(SRCDIR) $(TARGET)
-	$(MAKE) clean
 
 override_dh_auto_build:
-	# build all supported version
-	+pg_buildext build $(SRCDIR) $(TARGET)
+	+pg_buildext build build-%v
 
-override_dh_auto_install: 
-	# then install each of them
-	+pg_buildext install $(SRCDIR) $(TARGET) postgresql-%v-$(EXTNAME)
+override_dh_auto_test:
+	# nothing to do here, see debian/tests/* instead
 
-orig: clean
-	git archive --prefix=$(EXTNAME)-$(PKGVERS)/ -o ../$(EXTNAME)_$(PKGVERS).orig.tar.gz HEAD
+override_dh_auto_install:
+	+pg_buildext install build-%v postgresql-%v-pgfincore
+
+override_dh_installdocs:
+	dh_installdocs --all README.*
+
+override_dh_auto_clean:
+	+pg_buildext clean build-%v
 
 %:
 	dh $@
-
-.PHONY: debian/control
