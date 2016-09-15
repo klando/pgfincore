@@ -1,6 +1,4 @@
-SET client_min_messages = warning;
-\set ECHO none
-RESET client_min_messages;
+CREATE EXTENSION pgfincore;
 --
 -- test SYSCONF
 --
@@ -111,5 +109,14 @@ select true from pgfadvise_normal('test');
  bool 
 ------
  t
+(1 row)
+
+--
+-- tests drawers
+--
+select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
+ ?column? 
+----------
+ 
 (1 row)
 
