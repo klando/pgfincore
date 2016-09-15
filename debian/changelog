@@ -4,6 +4,14 @@ pgfincore (1.2-1) unstable; urgency=medium
 
  -- Cédric Villemain <cedric@villemain.org>  Thu, 15 Sep 2016 13:13:14 CEST 2016
 
+pgfincore (1.1.2-4) unstable; urgency=medium
+
+  * Build for PostgreSQL 9.5. (Closes: #811134)
+  * Bump Standards-Version to 3.9.6 (no changes needed).
+  * debian/control.in: Drop obsolete XS-Testsuite: field.
+
+ -- Martin Pitt <mpitt@debian.org>  Sat, 16 Jan 2016 11:50:19 +0100
+
 pgfincore (1.1.2-3) unstable; urgency=medium
 
   * Upload to unstable for 9.4.

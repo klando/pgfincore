@@ -4,11 +4,10 @@ Priority: extra
 Maintainer: Debian PostgreSQL Maintainers <pkg-postgresql-public@lists.alioth.debian.org>
 Uploaders: Cédric Villemain <cedric@villemain.org>, Dimitri Fontaine <dim@tapoueh.org>, Christoph Berg <myon@debian.org>
 Build-Depends: debhelper (>= 9), postgresql-server-dev-all (>= 158~)
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Vcs-Git: git://git.postgresql.org/git/pgfincore.git
 Vcs-browser: http://git.postgresql.org/gitweb/?p=pgfincore.git
 Homepage: http://villemain.org/projects/pgfincore
-XS-Testsuite: autopkgtest
 
 Package: postgresql-PGVERSION-pgfincore
 Architecture: any
