@@ -2,7 +2,7 @@ pgfincore (1.2-1) unstable; urgency=medium
 
   * New upstream release 1.2.
 
- -- Cédric Villemain <cedric@villemain.org>  Thu, 15 Sep 2016 13:13:14 CEST 2016
+ -- Cédric Villemain <cedric@villemain.org>  Thu, 15 Sep 2016 13:13:14 +0200
 
 pgfincore (1.1.2-4) unstable; urgency=medium
 
