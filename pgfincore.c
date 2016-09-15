@@ -675,8 +675,8 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(5))
 		elog(ERROR, "pgfadvise_loader: databit argument shouldn't be NULL");
-	else
-		databit		= PG_GETARG_VARBIT_P(5);
+
+        databit		= PG_GETARG_VARBIT_P(5);
 
 	/* initialize nulls array to build the tuple */
 	memset(nulls, 0, sizeof(nulls));
@@ -1113,8 +1113,8 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		elog(ERROR, "pgfincore_drawer: databit argument shouldn't be NULL");
-	else
-		databit	= PG_GETARG_VARBIT_P(0);
+
+        databit	= PG_GETARG_VARBIT_P(0);
 
 	len =  VARBITLEN(databit);
 	result = (char *) palloc((len/FINCORE_BITS) + 1);
