@@ -3,7 +3,7 @@ Upstream-Name: pgfincore
 Source: http://git.postgresql.org/gitweb/?p=pgfincore.git
 
 Files: *
-Copyright: 2009-2013 Cédric Villemain <cedric@villemain.org>
+Copyright: 2009-2016 Cédric Villemain <cedric@villemain.org>
 License: BSD-3-Clause
 
 Files: debian/*

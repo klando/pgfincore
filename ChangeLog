@@ -1,3 +1,9 @@
+16/09/2016 Cédric Villemain <cedric@2ndQuadrant.fr>
+  * 1.2  - Prepared fincore syscall usage
+         - Added 2 columns in pgfincore() with dirty status when available
+         - Support PostgreSQL 9.6
+         - Added a drawer function
+
 12/10/2013 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.1.2 - Fix README filename for PGXS
   		  - Update to PostgreSQL 9.3
