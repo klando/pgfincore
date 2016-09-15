@@ -16,6 +16,7 @@ override_dh_installdocs:
 
 override_dh_auto_clean:
 	+pg_buildext clean build-%v
+	rm -rf results # clean up behind debian/tests/installcheck
 
 %:
 	dh $@

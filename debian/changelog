@@ -1,3 +1,10 @@
+pgfincore (1.2-2) UNRELEASED; urgency=medium
+
+  * Update watch file to ignore debian/ tags on github.
+  * Bump S-V and clean up results/.
+
+ -- Christoph Berg <myon@debian.org>  Thu, 15 Sep 2016 22:46:41 +0200
+
 pgfincore (1.2-1) unstable; urgency=medium
 
   * New upstream release 1.2.
