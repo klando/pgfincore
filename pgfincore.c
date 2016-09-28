@@ -1111,7 +1111,7 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	bits8 *sp;
 	bits8 x;
 
-	if (PG_ARGISNULL(1))
+	if (PG_ARGISNULL(0))
 		elog(ERROR, "pgfincore_drawer: databit argument shouldn't be NULL");
 
         databit	= PG_GETARG_VARBIT_P(0);
