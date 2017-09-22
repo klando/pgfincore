@@ -1,3 +1,6 @@
+22/09/2017 Cédric Villemain <cedric@2ndQuadrant.fr>
+  * 1.2.1 - Fix check on NULL input for drawer function
+
 16/09/2016 Cédric Villemain <cedric@2ndQuadrant.fr>
   * 1.2  - Prepared fincore syscall usage
          - Added 2 columns in pgfincore() with dirty status when available

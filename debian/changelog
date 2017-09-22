@@ -1,8 +1,10 @@
-pgfincore (1.2-3) UNRELEASED; urgency=medium
+pgfincore (1.2.1-1) unstable; urgency=medium
 
+  * Team upload for PostgreSQL 10 support.
+  * New upstream version.
   * debian/tests/control: Drop needs-root.
 
- -- Christoph Berg <christoph.berg@credativ.de>  Thu, 13 Oct 2016 16:56:37 +0200
+ -- Christoph Berg <christoph.berg@credativ.de>  Fri, 22 Sep 2017 09:48:18 +0200
 
 pgfincore (1.2-2) unstable; urgency=medium
 
