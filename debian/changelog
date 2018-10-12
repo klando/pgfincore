@@ -1,3 +1,10 @@
+pgfincore (1.2.1-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 11.
+  * Update PostgreSQL team address.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 12 Oct 2018 13:33:10 +0200
+
 pgfincore (1.2.1-1) unstable; urgency=medium
 
   * Team upload for PostgreSQL 10 support.
