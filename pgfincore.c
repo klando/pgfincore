@@ -815,9 +815,10 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
 		if (pa == MAP_FAILED)
 		{
+			int	save_errno = errno;
 			FreeFile(fp);
 			elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric@villemain.org with '[pgfincore] ENOMEM' as subject.",
-			     filename, errno, strerror(errno));
+			     filename, save_errno, strerror(save_errno));
 			return 3;
 		}
 #endif
@@ -839,15 +840,17 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/* Affect vec with mincore */
 		if (mincore(pa, st.st_size, vec) != 0)
 		{
+			int save_errno = errno;
 			munmap(pa, st.st_size);
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
-			     pa, (long long int)st.st_size, vec, strerror(errno));
+			     pa, (long long int)st.st_size, vec, strerror(save_errno));
 #else
 		/* Affect vec with fincore */
 		if (fincore(fd, 0, st.st_size, vec) != 0)
 		{
+			int save_errno = errno;
 			elog(ERROR, "fincore(%u, 0, %lld, %p): %s\n",
-			     fd, (long long int)st.st_size, vec, strerror(errno));
+			     fd, (long long int)st.st_size, vec, strerror(save_errno));
 #endif
 			free(vec);
 			FreeFile(fp);
