@@ -1,5 +1,4 @@
 .pc
-debian/control
 debian/files
 build-pgfincore-*
 debian/postgresql-*
