@@ -1,3 +1,13 @@
+pgfincore (1.2.2-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 13.
+  * Use dh --with pgxs.
+  * R³: no.
+  * DH 13.
+  * debian/tests: Use 'make' instead of postgresql-server-dev-all.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 19 Oct 2020 12:39:15 +0200
+
 pgfincore (1.2.2-1) unstable; urgency=medium
 
   * Upload for PostgreSQL 12.
