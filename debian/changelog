@@ -1,3 +1,9 @@
+pgfincore (1.2.2-3) unstable; urgency=medium
+
+  * Upload for PostgreSQL 14.
+
+ -- Christoph Berg <myon@debian.org>  Wed, 03 Nov 2021 14:14:12 +0100
+
 pgfincore (1.2.2-2) unstable; urgency=medium
 
   * Upload for PostgreSQL 13.
