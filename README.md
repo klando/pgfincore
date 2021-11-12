@@ -139,81 +139,81 @@ Executing a snapshot and a restore is very simple:
 
 ## SYNOPSIS
 
-   pgsysconf(OUT os_page_size bigint, OUT os_pages_free bigint,
-             OUT os_total_pages bigint)
-     RETURNS record
-    
-   pgsysconf_pretty(OUT os_page_size text, OUT os_pages_free text,
-                    OUT os_total_pages text)
-     RETURNS record
+    pgsysconf(OUT os_page_size bigint, OUT os_pages_free bigint,
+              OUT os_total_pages bigint)
+      RETURNS record
 
-   pgfadvise(IN relname regclass, IN fork text, IN action int,
-             OUT relpath text, OUT os_page_size bigint,
-             OUT rel_os_pages bigint, OUT os_pages_free bigint)
+    pgsysconf_pretty(OUT os_page_size text, OUT os_pages_free text,
+                     OUT os_total_pages text)
+      RETURNS record
+
+    pgfadvise(IN relname regclass, IN fork text, IN action int,
+              OUT relpath text, OUT os_page_size bigint,
+              OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_willneed(IN relname regclass,
+                       OUT relpath text, OUT os_page_size bigint,
+                       OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_dontneed(IN relname regclass,
+                       OUT relpath text, OUT os_page_size bigint,
+                       OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_normal(IN relname regclass,
+                     OUT relpath text, OUT os_page_size bigint,
+                     OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_sequential(IN relname regclass,
+                         OUT relpath text, OUT os_page_size bigint,
+                         OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_random(IN relname regclass,
+                     OUT relpath text, OUT os_page_size bigint,
+                     OUT rel_os_pages bigint, OUT os_pages_free bigint)
+      RETURNS setof record
+
+    pgfadvise_loader(IN relname regclass, IN fork text, IN segment int,
+                     IN load bool, IN unload bool, IN databit varbit,
+                     OUT relpath text, OUT os_page_size bigint,
+                     OUT os_pages_free bigint, OUT pages_loaded bigint,
+                     OUT pages_unloaded bigint)
+      RETURNS setof record
+
+    pgfadvise_loader(IN relname regclass, IN segment int,
+                     IN load bool, IN unload bool, IN databit varbit,
+                     OUT relpath text, OUT os_page_size bigint,
+                     OUT os_pages_free bigint, OUT pages_loaded bigint,
+                     OUT pages_unloaded bigint)
+      RETURNS setof record
+
+    pgfincore(IN relname regclass, IN fork text, IN getdatabit bool,
+              OUT relpath text, OUT segment int, OUT os_page_size bigint,
+              OUT rel_os_pages bigint, OUT pages_mem bigint,
+              OUT group_mem bigint, OUT os_pages_free bigint,
+              OUT databit varbit, OUT pages_dirty bigint,
+              OUT group_dirty bigint)
+      RETURNS setof record
+
+    pgfincore(IN relname regclass, IN getdatabit bool,
+              OUT relpath text, OUT segment int, OUT os_page_size bigint,
+              OUT rel_os_pages bigint, OUT pages_mem bigint,
+              OUT group_mem bigint, OUT os_pages_free bigint,
+              OUT databit varbit, OUT pages_dirty bigint,
+              OUT group_dirty bigint)
      RETURNS setof record
 
-   pgfadvise_willneed(IN relname regclass,
-                      OUT relpath text, OUT os_page_size bigint,
-                      OUT rel_os_pages bigint, OUT os_pages_free bigint)
-     RETURNS setof record
-
-   pgfadvise_dontneed(IN relname regclass,
-                      OUT relpath text, OUT os_page_size bigint,
-                      OUT rel_os_pages bigint, OUT os_pages_free bigint)
-     RETURNS setof record
-
-   pgfadvise_normal(IN relname regclass,
-                    OUT relpath text, OUT os_page_size bigint,
-                    OUT rel_os_pages bigint, OUT os_pages_free bigint)
-     RETURNS setof record
-
-   pgfadvise_sequential(IN relname regclass,
-                        OUT relpath text, OUT os_page_size bigint,
-                        OUT rel_os_pages bigint, OUT os_pages_free bigint)
-     RETURNS setof record
-
-   pgfadvise_random(IN relname regclass,
-                    OUT relpath text, OUT os_page_size bigint,
-                    OUT rel_os_pages bigint, OUT os_pages_free bigint)
-     RETURNS setof record
-
-   pgfadvise_loader(IN relname regclass, IN fork text, IN segment int,
-                    IN load bool, IN unload bool, IN databit varbit,
-                    OUT relpath text, OUT os_page_size bigint,
-                    OUT os_pages_free bigint, OUT pages_loaded bigint,
-                    OUT pages_unloaded bigint)
-     RETURNS setof record
-
-   pgfadvise_loader(IN relname regclass, IN segment int,
-                    IN load bool, IN unload bool, IN databit varbit,
-                    OUT relpath text, OUT os_page_size bigint,
-                    OUT os_pages_free bigint, OUT pages_loaded bigint,
-                    OUT pages_unloaded bigint)
-     RETURNS setof record
-
-   pgfincore(IN relname regclass, IN fork text, IN getdatabit bool,
-             OUT relpath text, OUT segment int, OUT os_page_size bigint,
-             OUT rel_os_pages bigint, OUT pages_mem bigint,
-             OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit varbit, OUT pages_dirty bigint,
-             OUT group_dirty bigint)
-     RETURNS setof record
-
-   pgfincore(IN relname regclass, IN getdatabit bool,
-             OUT relpath text, OUT segment int, OUT os_page_size bigint,
-             OUT rel_os_pages bigint, OUT pages_mem bigint,
-             OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit varbit, OUT pages_dirty bigint,
-             OUT group_dirty bigint)
-     RETURNS setof record
-
-   pgfincore(IN relname regclass,
-             OUT relpath text, OUT segment int, OUT os_page_size bigint,
-             OUT rel_os_pages bigint, OUT pages_mem bigint,
-             OUT group_mem bigint, OUT os_pages_free bigint,
-             OUT databit varbit, OUT pages_dirty bigint,
-             OUT group_dirty bigint)
-     RETURNS setof record
+    pgfincore(IN relname regclass,
+              OUT relpath text, OUT segment int, OUT os_page_size bigint,
+              OUT rel_os_pages bigint, OUT pages_mem bigint,
+              OUT group_mem bigint, OUT os_pages_free bigint,
+              OUT databit varbit, OUT pages_dirty bigint,
+              OUT group_dirty bigint)
+      RETURNS setof record
 
 ## DOCUMENTATION
 
