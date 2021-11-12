@@ -1,3 +1,5 @@
+[![CI](https://github.com/klando/pgfincore/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/klando/pgfincore/actions/workflows/main.yml)
+
 # PgFincore
 
 --------------------------------------------------------------
