@@ -348,8 +348,6 @@ For example:
 
 ## SEE ALSO
 
-2ndQuadrant, PostgreSQL Expertise, developement, training and 24x7 support:
+Data Bene, PostgreSQL Expertise, Technical Support and Assistance, Trainings:
 
-  http://2ndQuadrant.com
-
-
+  https://www.data-bene.io
