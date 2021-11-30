@@ -1,2 +1,2 @@
-version=3
-https://github.com/klando/pgfincore/releases /klando/pgfincore/archive/([^/]*).tar.gz
+version=4
+https://github.com/klando/pgfincore/tags .*/([^/-]*).tar.gz
