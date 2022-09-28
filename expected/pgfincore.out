@@ -2,16 +2,12 @@ CREATE EXTENSION pgfincore;
 --
 -- test SYSCONF
 --
-select true from pgsysconf();
- bool 
-------
- t
+select from pgsysconf();
+--
 (1 row)
 
-select true from pgsysconf_pretty();
- bool 
-------
- t
+select from pgsysconf_pretty();
+--
 (1 row)
 
 --
@@ -25,90 +21,66 @@ CREATE TEMP TABLE test AS SELECT generate_series(1,256) as a;
 --
 -- test fadvise_loader
 --
-select true from pgfadvise_loader('test', 0, true, true, B'1010');
- bool 
-------
- t
+select from pgfadvise_loader('test', 0, true, true, B'1010');
+--
 (1 row)
 
-select true from pgfadvise_loader('test', 0, true, false, B'1010');
- bool 
-------
- t
+select from pgfadvise_loader('test', 0, true, false, B'1010');
+--
 (1 row)
 
-select true from pgfadvise_loader('test', 0, false, true, B'1010');
- bool 
-------
- t
+select from pgfadvise_loader('test', 0, false, true, B'1010');
+--
 (1 row)
 
-select true from pgfadvise_loader('test', 0, false, false, B'1010');
- bool 
-------
- t
+select from pgfadvise_loader('test', 0, false, false, B'1010');
+--
 (1 row)
 
 -- must not fail on empty databit input
-select true from pgfadvise_loader('test', 0, false, false, B'');
- bool 
-------
- t
+select from pgfadvise_loader('test', 0, false, false, B'');
+--
 (1 row)
 
 -- ERROR on NULL databit input
-select true from pgfadvise_loader('test', 0, false, false, NULL);
+select from pgfadvise_loader('test', 0, false, false, NULL);
 ERROR:  pgfadvise_loader: databit argument shouldn't be NULL
 CONTEXT:  SQL function "pgfadvise_loader" statement 1
 --
 -- test pgfincore
 --
-select true from pgfincore('test', true);
- bool 
-------
- t
+select from pgfincore('test', true);
+--
 (1 row)
 
-select true from pgfincore('test');
- bool 
-------
- t
+select from pgfincore('test');
+--
 (1 row)
 
 --
 -- test DONTNEED, WILLNEED
 --
-select true from pgfadvise_willneed('test');
- bool 
-------
- t
+select from pgfadvise_willneed('test');
+--
 (1 row)
 
-select true from pgfadvise_dontneed('test');
- bool 
-------
- t
+select from pgfadvise_dontneed('test');
+--
 (1 row)
 
 --
 -- test PGFADVISE flags
 --
-select true from pgfadvise_sequential('test');
- bool 
-------
- t
+select from pgfadvise_sequential('test');
+--
 (1 row)
 
-select true from pgfadvise_random('test');
- bool 
-------
- t
+select from pgfadvise_random('test');
+--
 (1 row)
 
-select true from pgfadvise_normal('test');
- bool 
-------
- t
+select from pgfadvise_normal('test');
+--
 (1 row)
 
 --
