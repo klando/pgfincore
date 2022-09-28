@@ -1,3 +1,9 @@
+pgfincore (1.2.4-1) unstable; urgency=medium
+
+  * New version with PG 15 support.
+
+ -- Christoph Berg <myon@debian.org>  Wed, 28 Sep 2022 14:13:32 +0200
+
 pgfincore (1.2.3-1) unstable; urgency=medium
 
   * Fix GitHub watch file.
