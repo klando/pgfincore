@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
 Uploaders: Cédric Villemain <cedric@villemain.org>, Dimitri Fontaine <dim@tapoueh.org>, Christoph Berg <myon@debian.org>
 Build-Depends: debhelper-compat (= 13), postgresql-all (>= 217~)
-Standards-Version: 4.5.0
+Standards-Version: 4.6.1
 Rules-Requires-Root: no
 Vcs-Git: git://git.postgresql.org/git/pgfincore.git
 Vcs-Browser: http://git.postgresql.org/gitweb/?p=pgfincore.git

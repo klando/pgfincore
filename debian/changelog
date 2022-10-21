@@ -1,3 +1,9 @@
+pgfincore (1.2.4-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 15.
+
+ -- Christoph Berg <myon@debian.org>  Fri, 21 Oct 2022 11:59:48 +0200
+
 pgfincore (1.2.4-1) unstable; urgency=medium
 
   * New version with PG 15 support.
