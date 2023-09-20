@@ -4,27 +4,28 @@
 *  Copyright (C) 2009-2011 Cédric Villemain
 */
 
-/* { POSIX stuff */
+/* POSIX stuff */
 #define _XOPEN_SOURCE 600 /* fadvise */
 
+#include <fcntl.h>  /* fadvise */
 #include <stdlib.h> /* exit, calloc, free */
 #include <sys/stat.h> /* stat, fstat */
 #include <sys/types.h> /* size_t, mincore */
-#include <unistd.h> /* sysconf, close */
 #include <sys/mman.h> /* mmap, mincore */
-#include <fcntl.h>  /* fadvise */
+#include <unistd.h> /* sysconf, close */
 /* } */
 
-/* { PostgreSQL stuff */
+/* PostgreSQL stuff */
 #include "postgres.h" /* general Postgres declarations */
+
 #include "access/heapam.h" /* relation_open */
 #include "catalog/catalog.h" /* relpath */
 #include "catalog/namespace.h" /* makeRangeVarFromNameList */
+#include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
+#include "funcapi.h" /* SRF */
 #include "utils/builtins.h" /* textToQualifiedNameList */
 #include "utils/rel.h" /* Relation */
 #include "utils/varbit.h" /* bitstring datatype */
-#include "funcapi.h" /* SRF */
-#include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 #include "storage/fd.h"
 #include "access/htup_details.h" /* heap_form_tuple */
 #include "common/relpath.h" /* relpathbackend */
@@ -39,11 +40,9 @@
 #error "Unsupported postgresql version"
 #endif
 
-
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
-/* } */
 
 #define PGSYSCONF_COLS  		3
 #define PGFADVISE_COLS			4
