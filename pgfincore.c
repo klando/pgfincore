@@ -26,6 +26,8 @@
 #include "funcapi.h" /* SRF */
 #include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
 #include "storage/fd.h"
+#include "access/htup_details.h" /* heap_form_tuple */
+#include "common/relpath.h" /* relpathbackend */
 
 #ifdef PG_VERSION_NUM
 #define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
@@ -33,14 +35,10 @@
 #error "Unknown postgresql version"
 #endif
 
-#if PG_VERSION_NUM < 80300
+#if PG_VERSION_NUM < 90300
 #error "Unsupported postgresql version"
 #endif
 
-#if PG_VERSION_NUM > 90299
-#include "access/htup_details.h" /* 9.3 heap_form_tuple */
-#include "common/relpath.h" /* 9.3 relpathbackend */
-#endif
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -146,65 +144,8 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
 
-/*
- * We need to add some handler to keep the code clean
- * and support 8.3, 8.4 and 9.0
- */
-#if PG_MAJOR_VERSION == 803
-#if defined(HAVE_DECL_POSIX_FADVISE)
-#define USE_POSIX_FADVISE
-#endif
-char *text_to_cstring(const text *t);
-text *cstring_to_text(const char *s);
-text *cstring_to_text_with_len(const char *s, int len);
-
-char *
-text_to_cstring(const text *t)
-{
-	/* must cast away the const, unfortunately */
-	text       *tunpacked = pg_detoast_datum_packed((struct varlena *) t);
-	int         len = VARSIZE_ANY_EXHDR(tunpacked);
-	char       *result;
-
-	result = (char *) palloc(len + 1);
-	memcpy(result, VARDATA_ANY(tunpacked), len);
-	result[len] = '\0';
-
-	if (tunpacked != t)
-		pfree(tunpacked);
-
-	return result;
-}
-
-text *
-cstring_to_text_with_len(const char *s, int len)
-{
-	text       *result = (text *) palloc(len + VARHDRSZ);
-
-	SET_VARSIZE(result, len + VARHDRSZ);
-	memcpy(VARDATA(result), s, len);
-
-	return result;
-}
-
-text *
-cstring_to_text(const char *s)
-{
-	return cstring_to_text_with_len(s, strlen(s));
-}
-
-#define CStringGetTextDatum(s) PointerGetDatum(cstring_to_text(s))
-#define relpathpg(rel, forkName) \
-        relpath((rel)->rd_node)
-
-#elif PG_MAJOR_VERSION == 804 || PG_MAJOR_VERSION == 900
-#define relpathpg(rel, forkName) \
-        relpath((rel)->rd_node, forkname_to_number(text_to_cstring(forkName)))
-
-#else
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#endif
 
 /*
  * pgsysconf
