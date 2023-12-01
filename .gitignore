@@ -5,3 +5,5 @@ debian/postgresql-*
 results/
 *.so
 pgfincore*.tar.gz
+*.bc
+*.o
