@@ -5,30 +5,30 @@
 */
 
 /* POSIX stuff */
-#define _XOPEN_SOURCE 600 /* fadvise */
+#define _XOPEN_SOURCE 600		/* fadvise */
 
-#include <fcntl.h>  /* fadvise */
-#include <stdlib.h> /* exit, calloc, free */
-#include <sys/stat.h> /* stat, fstat */
-#include <sys/types.h> /* size_t, mincore */
-#include <sys/mman.h> /* mmap, mincore */
-#include <unistd.h> /* sysconf, close */
+#include <fcntl.h>				/* fadvise */
+#include <stdlib.h>				/* exit, calloc, free */
+#include <sys/stat.h>			/* stat, fstat */
+#include <sys/types.h>			/* size_t, mincore */
+#include <sys/mman.h>			/* mmap, mincore */
+#include <unistd.h>				/* sysconf, close */
 /* } */
 
 /* PostgreSQL stuff */
-#include "postgres.h" /* general Postgres declarations */
+#include "postgres.h"			/* general Postgres declarations */
 
-#include "access/heapam.h" /* relation_open */
-#include "catalog/catalog.h" /* relpath */
-#include "catalog/namespace.h" /* makeRangeVarFromNameList */
-#include "catalog/pg_type.h" /* TEXTOID for tuple_desc */
-#include "funcapi.h" /* SRF */
-#include "utils/builtins.h" /* textToQualifiedNameList */
-#include "utils/rel.h" /* Relation */
-#include "utils/varbit.h" /* bitstring datatype */
+#include "access/heapam.h"		/* relation_open */
+#include "catalog/catalog.h"	/* relpath */
+#include "catalog/namespace.h"	/* makeRangeVarFromNameList */
+#include "catalog/pg_type.h"	/* TEXTOID for tuple_desc */
+#include "funcapi.h"			/* SRF */
+#include "utils/builtins.h"		/* textToQualifiedNameList */
+#include "utils/rel.h"			/* Relation */
+#include "utils/varbit.h"		/* bitstring datatype */
 #include "storage/fd.h"
-#include "access/htup_details.h" /* heap_form_tuple */
-#include "common/relpath.h" /* relpathbackend */
+#include "access/htup_details.h"	/* heap_form_tuple */
+#include "common/relpath.h"		/* relpathbackend */
 
 #ifdef PG_VERSION_NUM
 #define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
@@ -68,11 +68,11 @@ PG_MODULE_MAGIC;
  */
 typedef struct
 {
-	int				advice;			/* the posix_fadvise advice */
-	TupleDesc		tupd;			/* the tuple descriptor */
-	Relation		rel;			/* the relation */
-	unsigned int	segcount;		/* the segment current number */
-	char 			*relationpath;	/* the relation path */
+	int			advice;			/* the posix_fadvise advice */
+	TupleDesc	tupd;			/* the tuple descriptor */
+	Relation	rel;			/* the relation */
+	unsigned int segcount;		/* the segment current number */
+	char	   *relationpath;	/* the relation path */
 } pgfadvise_fctx;
 
 /*
@@ -81,9 +81,9 @@ typedef struct
  */
 typedef struct
 {
-	size_t			pageSize;	/* os page size */
-	size_t			pagesFree;	/* free page cache */
-	size_t			filesize;	/* the filesize */
+	size_t		pageSize;		/* os page size */
+	size_t		pagesFree;		/* free page cache */
+	size_t		filesize;		/* the filesize */
 } pgfadviseStruct;
 
 /*
@@ -92,10 +92,10 @@ typedef struct
  */
 typedef struct
 {
-	size_t	pageSize;		/* os page size */
-	size_t	pagesFree;		/* free page cache */
-	size_t	pagesLoaded;	/* pages loaded */
-	size_t	pagesUnloaded;	/* pages unloaded  */
+	size_t		pageSize;		/* os page size */
+	size_t		pagesFree;		/* free page cache */
+	size_t		pagesLoaded;	/* pages loaded */
+	size_t		pagesUnloaded;	/* pages unloaded  */
 } pgfloaderStruct;
 
 /*
@@ -104,11 +104,11 @@ typedef struct
  */
 typedef struct
 {
-	bool			getvector;		/* output varbit data ? */
-	TupleDesc		tupd;			/* the tuple descriptor */
-	Relation 		rel;			/* the relation */
-	unsigned int	segcount;		/* the segment current number */
-	char			*relationpath;	/* the relation path */
+	bool		getvector;		/* output varbit data ? */
+	TupleDesc	tupd;			/* the tuple descriptor */
+	Relation	rel;			/* the relation */
+	unsigned int segcount;		/* the segment current number */
+	char	   *relationpath;	/* the relation path */
 } pgfincore_fctx;
 
 /*
@@ -117,19 +117,19 @@ typedef struct
  */
 typedef struct
 {
-	size_t	pageSize;		/* os page size */
-	size_t	pagesFree;		/* free page cache */
-	size_t	rel_os_pages;
-	size_t	pages_mem;
-	size_t	group_mem;
-	size_t	pages_dirty;
-	size_t	group_dirty;
-	VarBit	*databit;
+	size_t		pageSize;		/* os page size */
+	size_t		pagesFree;		/* free page cache */
+	size_t		rel_os_pages;
+	size_t		pages_mem;
+	size_t		group_mem;
+	size_t		pages_dirty;
+	size_t		group_dirty;
+	VarBit	   *databit;
 } pgfincoreStruct;
 
-Datum pgsysconf(PG_FUNCTION_ARGS);
+Datum		pgsysconf(PG_FUNCTION_ARGS);
 
-Datum 		pgfadvise(PG_FUNCTION_ARGS);
+Datum		pgfadvise(PG_FUNCTION_ARGS);
 static int	pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv);
 
 Datum		pgfadvise_loader(PG_FUNCTION_ARGS);
@@ -163,26 +163,26 @@ PG_FUNCTION_INFO_V1(pgsysconf);
 Datum
 pgsysconf(PG_FUNCTION_ARGS)
 {
-        TupleDesc       tupdesc;
-        Datum           values[PGSYSCONF_COLS] = {0};
-        bool            nulls[PGSYSCONF_COLS] = {0};
-        int             col = 0;
+	TupleDesc	tupdesc;
+	Datum		values[PGSYSCONF_COLS] = {0};
+	bool		nulls[PGSYSCONF_COLS] = {0};
+	int			col = 0;
 
-        /* Build a tuple descriptor for our result type */
-        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-                ereport(ERROR,
-                                errcode(ERRCODE_DATATYPE_MISMATCH),
-                                errmsg("return type must be a row type"));
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				errcode(ERRCODE_DATATYPE_MISMATCH),
+				errmsg("return type must be a row type"));
 
-        /* Page size */
-        values[col++] = Int64GetDatum((off_t) sysconf(_SC_PAGESIZE));
-        /* free page in memory */
-        values[col++] = Int64GetDatum((off_t) sysconf(_SC_AVPHYS_PAGES));
-        /* total memory */
-        values[col++] = Int64GetDatum((off_t) sysconf(_SC_PHYS_PAGES));
+	/* Page size */
+	values[col++] = Int64GetDatum((off_t) sysconf(_SC_PAGESIZE));
+	/* free page in memory */
+	values[col++] = Int64GetDatum((off_t) sysconf(_SC_AVPHYS_PAGES));
+	/* total memory */
+	values[col++] = Int64GetDatum((off_t) sysconf(_SC_PHYS_PAGES));
 
-        /* Build and return the result tuple. */
-        PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+	/* Build and return the result tuple. */
+	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
 }
 
 #if defined(USE_POSIX_FADVISE)
@@ -197,24 +197,23 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 	 * close it ourselves even if PostgreSQL close it anyway at transaction
 	 * end.
 	 */
-	FILE	*fp;
-	int	fd;
+	FILE	   *fp;
+	int			fd;
 	struct stat st;
-	int	    adviceFlag;
+	int			adviceFlag;
 
 	/*
 	 * OS Page size and Free pages
 	 */
-	pgfdv->pageSize	= sysconf(_SC_PAGESIZE);
+	pgfdv->pageSize = sysconf(_SC_PAGESIZE);
 
 	/*
-	 * Fopen and fstat file
-	 * fd will be provided to posix_fadvise
-	 * if there is no file, just return 1, it is expected to leave the SRF
+	 * Fopen and fstat file fd will be provided to posix_fadvise if there is
+	 * no file, just return 1, it is expected to leave the SRF
 	 */
 	fp = AllocateFile(filename, "rb");
 	if (fp == NULL)
-                return 1;
+		return 1;
 
 	fd = fileno(fp);
 	if (fstat(fd, &st) == -1)
@@ -289,7 +288,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 }
 #else
 static int
-pgfadvise_file(char *filename, int advice, pgfadviseStruct	*pgfdv)
+pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 {
 	elog(ERROR, "POSIX_FADVISE UNSUPPORTED on your platform");
 	return 9;
@@ -308,29 +307,29 @@ pgfadvise(PG_FUNCTION_ARGS)
 {
 	/* SRF Stuff */
 	FuncCallContext *funcctx;
-	pgfadvise_fctx  *fctx;
+	pgfadvise_fctx *fctx;
 
 	/* our structure use to return values */
-	pgfadviseStruct	*pgfdv;
+	pgfadviseStruct *pgfdv;
 
 	/* our return value, 0 for success */
-	int 			result;
+	int			result;
 
 	/* The file we are working on */
-	char			filename[MAXPGPATH];
+	char		filename[MAXPGPATH];
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
 
-		Oid			  relOid    = PG_GETARG_OID(0);
-		text		  *forkName = PG_GETARG_TEXT_P(1);
-		int			  advice	= PG_GETARG_INT32(2);
+		Oid			relOid = PG_GETARG_OID(0);
+		text	   *forkName = PG_GETARG_TEXT_P(1);
+		int			advice = PG_GETARG_INT32(2);
 
 		/*
-		* Postgresql stuff to return a tuple
-		*/
+		 * Postgresql stuff to return a tuple
+		 */
 		TupleDesc	tupdesc;
 
 		/* create a function context for cross-call persistence */
@@ -344,18 +343,21 @@ pgfadvise(PG_FUNCTION_ARGS)
 		/* allocate memory for user context */
 		fctx = (pgfadvise_fctx *) palloc(sizeof(pgfadvise_fctx));
 
-        /* Build a tuple descriptor for our result type */
-        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-            elog(ERROR, "pgfadvise: return type must be a row type");
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "pgfadvise: return type must be a row type");
 
 		/* provide the tuple descriptor to the fonction structure */
-        fctx->tupd = tupdesc;
+		fctx->tupd = tupdesc;
 
 		/* open the current relation, accessShareLock */
-		// TODO use try_relation_open instead ?
+		/* TODO use try_relation_open instead ? */
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
-		/* we get the common part of the filename of each segment of a relation */
+		/*
+		 * we get the common part of the filename of each segment of a
+		 * relation
+		 */
 		fctx->relationpath = relpathpg(fctx->rel, forkName);
 
 		/* Here we keep track of current action in all calls */
@@ -366,7 +368,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 
 		/* And finally we keep track of our initialization */
 		elog(DEBUG1, "pgfadvise: init done for %s, in fork %s",
-						fctx->relationpath, text_to_cstring(forkName));
+			 fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -376,20 +378,20 @@ pgfadvise(PG_FUNCTION_ARGS)
 	fctx = funcctx->user_fctx;
 
 	/*
-	 * If we are still looking the first segment
-	 * relationpath should not be suffixed
+	 * If we are still looking the first segment relationpath should not be
+	 * suffixed
 	 */
 	if (fctx->segcount == 0)
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s",
-		         fctx->relationpath);
+				 MAXPGPATH,
+				 "%s",
+				 fctx->relationpath);
 	else
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s.%u",
-		         fctx->relationpath,
-		         fctx->segcount);
+				 MAXPGPATH,
+				 "%s.%u",
+				 fctx->relationpath,
+				 fctx->segcount);
 
 	elog(DEBUG1, "pgfadvise: about to work with %s, current advice : %d",
 		 filename, fctx->advice);
@@ -401,10 +403,9 @@ pgfadvise(PG_FUNCTION_ARGS)
 	result = pgfadvise_file(filename, fctx->advice, pgfdv);
 
 	/*
-	* When we have work with all segments of the current relation
-	* We exit from the SRF
-	* Else we build and return the tuple for this segment
-	*/
+	 * When we have work with all segments of the current relation We exit
+	 * from the SRF Else we build and return the tuple for this segment
+	 */
 	if (result)
 	{
 		elog(DEBUG1, "pgfadvise: closing %s", fctx->relationpath);
@@ -412,10 +413,11 @@ pgfadvise(PG_FUNCTION_ARGS)
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
 	}
-	else {
+	else
+	{
 		/*
-		* Postgresql stuff to return a tuple
-		*/
+		 * Postgresql stuff to return a tuple
+		 */
 		HeapTuple	tuple;
 		Datum		values[PGFADVISE_COLS];
 		bool		nulls[PGFADVISE_COLS];
@@ -427,13 +429,13 @@ pgfadvise(PG_FUNCTION_ARGS)
 		fctx->segcount++;
 
 		/* Filename */
-		values[0] = CStringGetTextDatum( filename );
+		values[0] = CStringGetTextDatum(filename);
 		/* os page size */
-		values[1] = Int64GetDatum( (int64) pgfdv->pageSize );
+		values[1] = Int64GetDatum((int64) pgfdv->pageSize);
 		/* number of pages used by segment */
-		values[2] = Int64GetDatum( (int64) ((pgfdv->filesize+pgfdv->pageSize-1)/pgfdv->pageSize) );
+		values[2] = Int64GetDatum((int64) ((pgfdv->filesize + pgfdv->pageSize - 1) / pgfdv->pageSize));
 		/* free page cache */
-		values[3] = Int64GetDatum( (int64) pgfdv->pagesFree );
+		values[3] = Int64GetDatum((int64) pgfdv->pagesFree);
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
@@ -451,18 +453,19 @@ pgfadvise_loader_file(char *filename,
 					  bool willneed, bool dontneed, VarBit *databit,
 					  pgfloaderStruct *pgfloader)
 {
-	bits8	*sp;
-	int		bitlen;
-	bits8	x;
-	int		i, k;
+	bits8	   *sp;
+	int			bitlen;
+	bits8		x;
+	int			i,
+				k;
 
 	/*
 	 * We use the AllocateFile(2) provided by PostgreSQL.  We're going to
 	 * close it ourselves even if PostgreSQL close it anyway at transaction
 	 * end.
 	 */
-	FILE	*fp;
-	int	fd;
+	FILE	   *fp;
+	int			fd;
 	struct stat st;
 
 	/*
@@ -471,21 +474,19 @@ pgfadvise_loader_file(char *filename,
 	pgfloader->pageSize = sysconf(_SC_PAGESIZE);
 
 	/*
-	 * we count the action we perform
-	 * both are theorical : we don't know if the page was or not in memory
-	 * when we call posix_fadvise
+	 * we count the action we perform both are theorical : we don't know if
+	 * the page was or not in memory when we call posix_fadvise
 	 */
-	pgfloader->pagesLoaded		= 0;
-	pgfloader->pagesUnloaded	= 0;
+	pgfloader->pagesLoaded = 0;
+	pgfloader->pagesUnloaded = 0;
 
 	/*
-	 * Fopen and fstat file
-	 * fd will be provided to posix_fadvise
-	 * if there is no file, just return 1, it is expected to leave the SRF
+	 * Fopen and fstat file fd will be provided to posix_fadvise if there is
+	 * no file, just return 1, it is expected to leave the SRF
 	 */
 	fp = AllocateFile(filename, "rb");
 	if (fp == NULL)
-                return 1;
+		return 1;
 
 	fd = fileno(fp);
 	if (fstat(fd, &st) == -1)
@@ -502,7 +503,7 @@ pgfadvise_loader_file(char *filename,
 	for (i = 0; i < bitlen - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
 	{
 		x = *sp;
-		/*  Is this bit set ? */
+		/* Is this bit set ? */
 		for (k = 0; k < BITS_PER_BYTE; k++)
 		{
 			if (IS_HIGHBIT_SET(x))
@@ -510,24 +511,25 @@ pgfadvise_loader_file(char *filename,
 				if (willneed)
 				{
 					(void) posix_fadvise(fd,
-					                     ((i+k) * pgfloader->pageSize),
-					                     pgfloader->pageSize,
-					                     POSIX_FADV_WILLNEED);
+										 ((i + k) * pgfloader->pageSize),
+										 pgfloader->pageSize,
+										 POSIX_FADV_WILLNEED);
 					pgfloader->pagesLoaded++;
 				}
 			}
 			else if (dontneed)
 			{
 				(void) posix_fadvise(fd,
-				                     ((i+k) * pgfloader->pageSize),
-				                     pgfloader->pageSize,
-				                     POSIX_FADV_DONTNEED);
+									 ((i + k) * pgfloader->pageSize),
+									 pgfloader->pageSize,
+									 POSIX_FADV_DONTNEED);
 				pgfloader->pagesUnloaded++;
 			}
 
 			x <<= 1;
 		}
 	}
+
 	/*
 	 * XXX this copy/paste of code to finnish to walk the bits is not pretty
 	 */
@@ -542,18 +544,18 @@ pgfadvise_loader_file(char *filename,
 				if (willneed)
 				{
 					(void) posix_fadvise(fd,
-					                     (k * pgfloader->pageSize),
-					                     pgfloader->pageSize,
-					                     POSIX_FADV_WILLNEED);
+										 (k * pgfloader->pageSize),
+										 pgfloader->pageSize,
+										 POSIX_FADV_WILLNEED);
 					pgfloader->pagesLoaded++;
 				}
 			}
 			else if (dontneed)
 			{
 				(void) posix_fadvise(fd,
-				                     (k * pgfloader->pageSize),
-				                     pgfloader->pageSize,
-				                     POSIX_FADV_DONTNEED);
+									 (k * pgfloader->pageSize),
+									 pgfloader->pageSize,
+									 POSIX_FADV_DONTNEED);
 				pgfloader->pagesUnloaded++;
 			}
 			x <<= 1;
@@ -589,22 +591,22 @@ PG_FUNCTION_INFO_V1(pgfadvise_loader);
 Datum
 pgfadvise_loader(PG_FUNCTION_ARGS)
 {
-	Oid       relOid        = PG_GETARG_OID(0);
-	text      *forkName     = PG_GETARG_TEXT_P(1);
-	int       segmentNumber = PG_GETARG_INT32(2);
-	bool      willneed      = PG_GETARG_BOOL(3);
-	bool      dontneed      = PG_GETARG_BOOL(4);
-	VarBit    *databit;
+	Oid			relOid = PG_GETARG_OID(0);
+	text	   *forkName = PG_GETARG_TEXT_P(1);
+	int			segmentNumber = PG_GETARG_INT32(2);
+	bool		willneed = PG_GETARG_BOOL(3);
+	bool		dontneed = PG_GETARG_BOOL(4);
+	VarBit	   *databit;
 
 	/* our structure use to return values */
-	pgfloaderStruct	*pgfloader;
+	pgfloaderStruct *pgfloader;
 
-	Relation  rel;
-	char      *relationpath;
-	char      filename[MAXPGPATH];
+	Relation	rel;
+	char	   *relationpath;
+	char		filename[MAXPGPATH];
 
 	/* our return value, 0 for success */
-	int 			result;
+	int			result;
 
 	/*
 	 * Postgresql stuff to return a tuple
@@ -617,7 +619,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(5))
 		elog(ERROR, "pgfadvise_loader: databit argument shouldn't be NULL");
 
-        databit		= PG_GETARG_VARBIT_P(5);
+	databit = PG_GETARG_VARBIT_P(5);
 
 	/* initialize nulls array to build the tuple */
 	memset(nulls, 0, sizeof(nulls));
@@ -633,25 +635,24 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	relationpath = relpathpg(rel, forkName);
 
 	/*
-	 * If we are looking the first segment,
-	 * relationpath should not be suffixed
+	 * If we are looking the first segment, relationpath should not be
+	 * suffixed
 	 */
 	if (segmentNumber == 0)
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s",
-		         relationpath);
+				 MAXPGPATH,
+				 "%s",
+				 relationpath);
 	else
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s.%u",
-		         relationpath,
-		         (int) segmentNumber);
+				 MAXPGPATH,
+				 "%s.%u",
+				 relationpath,
+				 (int) segmentNumber);
 
 	/*
-	 * We don't need the relation anymore
-	 * the only purpose was to get a consistent filename
-	 * (if file disappear, an error is logged)
+	 * We don't need the relation anymore the only purpose was to get a
+	 * consistent filename (if file disappear, an error is logged)
 	 */
 	relation_close(rel, AccessShareLock);
 
@@ -664,21 +665,21 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 								   pgfloader);
 	if (result != 0)
 		elog(ERROR, "Can't read file %s, fork(%s)",
-					filename, text_to_cstring(forkName));
+			 filename, text_to_cstring(forkName));
 	/* Filename */
-	values[0] = CStringGetTextDatum( filename );
+	values[0] = CStringGetTextDatum(filename);
 	/* os page size */
-	values[1] = Int64GetDatum( pgfloader->pageSize );
+	values[1] = Int64GetDatum(pgfloader->pageSize);
 	/* free page cache */
-	values[2] = Int64GetDatum( pgfloader->pagesFree );
+	values[2] = Int64GetDatum(pgfloader->pagesFree);
 	/* pages loaded */
-	values[3] = Int64GetDatum( pgfloader->pagesLoaded );
+	values[3] = Int64GetDatum(pgfloader->pagesLoaded);
 	/* pages unloaded  */
-	values[4] = Int64GetDatum( pgfloader->pagesUnloaded );
+	values[4] = Int64GetDatum(pgfloader->pagesUnloaded);
 
 	/* Build and return the result tuple. */
 	tuple = heap_form_tuple(tupdesc, values, nulls);
-	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
+	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
 }
 
 /*
@@ -687,12 +688,13 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 static int
 pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 {
-	int		flag=1;
-	int		flag_dirty=1;
+	int			flag = 1;
+	int			flag_dirty = 1;
 
-	int		len, bitlen;
-	bits8	*r;
-	bits8	x = 0;
+	int			len,
+				bitlen;
+	bits8	   *r;
+	bits8		x = 0;
 	register int64 pageIndex;
 
 
@@ -701,37 +703,36 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	 * close it ourselves even if PostgreSQL close it anyway at transaction
 	 * end.
 	 */
-	FILE	*fp;
-	int	fd;
+	FILE	   *fp;
+	int			fd;
 	struct stat st;
 
 #ifndef HAVE_FINCORE
-	void 		  *pa  = (char *) 0;
+	void	   *pa = (char *) 0;
 #endif
 	unsigned char *vec = (unsigned char *) 0;
 
 	/*
 	 * OS Page size
 	 */
-	pgfncr->pageSize  = sysconf(_SC_PAGESIZE);
+	pgfncr->pageSize = sysconf(_SC_PAGESIZE);
 
 	/*
 	 * Initialize counters
 	 */
-	pgfncr->pages_mem		= 0;
-	pgfncr->group_mem		= 0;
-	pgfncr->pages_dirty		= 0;
-	pgfncr->group_dirty		= 0;
-	pgfncr->rel_os_pages	= 0;
+	pgfncr->pages_mem = 0;
+	pgfncr->group_mem = 0;
+	pgfncr->pages_dirty = 0;
+	pgfncr->group_dirty = 0;
+	pgfncr->rel_os_pages = 0;
 
 	/*
-	 * Fopen and fstat file
-	 * fd will be provided to posix_fadvise
-	 * if there is no file, just return 1, it is expected to leave the SRF
+	 * Fopen and fstat file fd will be provided to posix_fadvise if there is
+	 * no file, just return 1, it is expected to leave the SRF
 	 */
 	fp = AllocateFile(filename, "rb");
 	if (fp == NULL)
-                return 1;
+		return 1;
 
 	fd = fileno(fp);
 
@@ -739,41 +740,41 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	{
 		FreeFile(fp);
 		elog(ERROR, "Can not stat object file : %s",
-		     filename);
+			 filename);
 		return 2;
 	}
 
 	/*
-	* if file ok
-	* then process
-	*/
+	 * if file ok then process
+	 */
 	if (st.st_size != 0)
 	{
 		/* number of pages in the current file */
-		pgfncr->rel_os_pages = (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize;
+		pgfncr->rel_os_pages = (st.st_size + pgfncr->pageSize - 1) / pgfncr->pageSize;
 
 #ifndef HAVE_FINCORE
 		pa = mmap(NULL, st.st_size, PROT_NONE, MAP_SHARED, fd, 0);
 		if (pa == MAP_FAILED)
 		{
-			int	save_errno = errno;
+			int			save_errno = errno;
+
 			FreeFile(fp);
 			elog(ERROR, "Can not mmap object file : %s, errno = %i,%s\nThis error can happen if there is not enought space in memory to do the projection. Please mail cedric@villemain.org with '[pgfincore] ENOMEM' as subject.",
-			     filename, save_errno, strerror(save_errno));
+				 filename, save_errno, strerror(save_errno));
 			return 3;
 		}
 #endif
 
 		/* Prepare our vector containing all blocks information */
-		vec = calloc(1, (st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
-		if ((void *)0 == vec)
+		vec = calloc(1, (st.st_size + pgfncr->pageSize - 1) / pgfncr->pageSize);
+		if ((void *) 0 == vec)
 		{
 #ifndef HAVE_FINCORE
 			munmap(pa, st.st_size);
 #endif
 			FreeFile(fp);
 			elog(ERROR, "Can not calloc object file : %s",
-			     filename);
+				 filename);
 			return 4;
 		}
 
@@ -781,17 +782,19 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/* Affect vec with mincore */
 		if (mincore(pa, st.st_size, vec) != 0)
 		{
-			int save_errno = errno;
+			int			save_errno = errno;
+
 			munmap(pa, st.st_size);
 			elog(ERROR, "mincore(%p, %lld, %p): %s\n",
-			     pa, (long long int)st.st_size, vec, strerror(save_errno));
+				 pa, (long long int) st.st_size, vec, strerror(save_errno));
 #else
 		/* Affect vec with fincore */
 		if (fincore(fd, 0, st.st_size, vec) != 0)
 		{
-			int save_errno = errno;
+			int			save_errno = errno;
+
 			elog(ERROR, "fincore(%u, 0, %lld, %p): %s\n",
-			     fd, (long long int)st.st_size, vec, strerror(save_errno));
+				 fd, (long long int) st.st_size, vec, strerror(save_errno));
 #endif
 			free(vec);
 			FreeFile(fp);
@@ -801,8 +804,9 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/*
 		 * prepare the bit string
 		 */
-		bitlen = FINCORE_BITS * ((st.st_size+pgfncr->pageSize-1)/pgfncr->pageSize);
+		bitlen = FINCORE_BITS * ((st.st_size + pgfncr->pageSize - 1) / pgfncr->pageSize);
 		len = VARBITTOTALLEN(bitlen);
+
 		/*
 		 * set to 0 so that *r is always initialised and string is zero-padded
 		 * XXX: do we need to free that ?
@@ -817,7 +821,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		/* handle the results */
 		for (pageIndex = 0; pageIndex <= pgfncr->rel_os_pages; pageIndex++)
 		{
-			// block in memory
+			/* block in memory */
 			if (vec[pageIndex] & FINCORE_PRESENT)
 			{
 				pgfncr->pages_mem++;
@@ -828,7 +832,11 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 					{
 						pgfncr->pages_dirty++;
 						*r |= (x >> 1);
-						/* we flag to detect contigous blocks in the same state */
+
+						/*
+						 * we flag to detect contigous blocks in the same
+						 * state
+						 */
 						if (flag_dirty)
 							pgfncr->group_dirty++;
 						flag_dirty = 0;
@@ -836,8 +844,8 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 					else
 						flag_dirty = 1;
 				}
-				elog (DEBUG5, "in memory blocks : %lld / %lld",
-				      (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
+				elog(DEBUG5, "in memory blocks : %lld / %lld",
+					 (long long int) pageIndex, (long long int) pgfncr->rel_os_pages);
 
 				/* we flag to detect contigous blocks in the same state */
 				if (flag)
@@ -845,7 +853,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 				flag = 0;
 			}
 			else
-				flag=1;
+				flag = 1;
 
 
 			x >>= FINCORE_BITS;
@@ -857,7 +865,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 		}
 	}
 	elog(DEBUG1, "pgfincore %s: %lld of %lld block in linux cache, %lld groups",
-	     filename, (long long int) pgfncr->pages_mem,  (long long int) pgfncr->rel_os_pages, (long long int) pgfncr->group_mem);
+		 filename, (long long int) pgfncr->pages_mem, (long long int) pgfncr->rel_os_pages, (long long int) pgfncr->group_mem);
 
 	/*
 	 * free and close
@@ -888,29 +896,29 @@ pgfincore(PG_FUNCTION_ARGS)
 {
 	/* SRF Stuff */
 	FuncCallContext *funcctx;
-	pgfincore_fctx  *fctx;
+	pgfincore_fctx *fctx;
 
 	/* our structure use to return values */
-	pgfincoreStruct	*pgfncr;
+	pgfincoreStruct *pgfncr;
 
 	/* our return value, 0 for success */
-	int 			result;
+	int			result;
 
 	/* The file we are working on */
-	char			filename[MAXPGPATH];
+	char		filename[MAXPGPATH];
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
 
-		Oid		relOid    = PG_GETARG_OID(0);
-		text	*forkName = PG_GETARG_TEXT_P(1);
-		bool	getvector = PG_GETARG_BOOL(2);
+		Oid			relOid = PG_GETARG_OID(0);
+		text	   *forkName = PG_GETARG_TEXT_P(1);
+		bool		getvector = PG_GETARG_BOOL(2);
 
 		/*
-		* Postgresql stuff to return a tuple
-		*/
+		 * Postgresql stuff to return a tuple
+		 */
 		TupleDesc	tupdesc;
 
 		/* create a function context for cross-call persistence */
@@ -924,21 +932,24 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* allocate memory for user context */
 		fctx = (pgfincore_fctx *) palloc(sizeof(pgfincore_fctx));
 
-        /* Build a tuple descriptor for our result type */
-        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-            elog(ERROR, "pgfadvise: return type must be a row type");
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "pgfadvise: return type must be a row type");
 
 		/* provide the tuple descriptor to the fonction structure */
-        fctx->tupd = tupdesc;
+		fctx->tupd = tupdesc;
 
 		/* are we going to grab and output the varbit data (can be large) */
-        fctx->getvector = getvector;
+		fctx->getvector = getvector;
 
 		/* open the current relation, accessShareLock */
-		// TODO use try_relation_open instead ?
+		/* TODO use try_relation_open instead ? */
 		fctx->rel = relation_open(relOid, AccessShareLock);
 
-		/* we get the common part of the filename of each segment of a relation */
+		/*
+		 * we get the common part of the filename of each segment of a
+		 * relation
+		 */
 		fctx->relationpath = relpathpg(fctx->rel, forkName);
 
 		/* segcount is used to get the next segment of the current relation */
@@ -946,7 +957,7 @@ pgfincore(PG_FUNCTION_ARGS)
 
 		/* And finally we keep track of our initialization */
 		elog(DEBUG1, "pgfincore: init done for %s, in fork %s",
-					fctx->relationpath, text_to_cstring(forkName));
+			 fctx->relationpath, text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -956,20 +967,20 @@ pgfincore(PG_FUNCTION_ARGS)
 	fctx = funcctx->user_fctx;
 
 	/*
-	 * If we are still looking the first segment
-	 * relationpath should not be suffixed
+	 * If we are still looking the first segment relationpath should not be
+	 * suffixed
 	 */
 	if (fctx->segcount == 0)
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s",
-		         fctx->relationpath);
+				 MAXPGPATH,
+				 "%s",
+				 fctx->relationpath);
 	else
 		snprintf(filename,
-		         MAXPGPATH,
-		         "%s.%u",
-		         fctx->relationpath,
-		         fctx->segcount);
+				 MAXPGPATH,
+				 "%s.%u",
+				 fctx->relationpath,
+				 fctx->segcount);
 
 	elog(DEBUG1, "pgfincore: about to work with %s", filename);
 
@@ -980,9 +991,9 @@ pgfincore(PG_FUNCTION_ARGS)
 	result = pgfincore_file(filename, pgfncr);
 
 	/*
-	* When we have work with all segment of the current relation, test success
-	* We exit from the SRF
-	*/
+	 * When we have work with all segment of the current relation, test
+	 * success We exit from the SRF
+	 */
 	if (result)
 	{
 		elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
@@ -993,8 +1004,8 @@ pgfincore(PG_FUNCTION_ARGS)
 	else
 	{
 		/*
-		* Postgresql stuff to return a tuple
-		*/
+		 * Postgresql stuff to return a tuple
+		 */
 		HeapTuple	tuple;
 		Datum		values[PGFINCORE_COLS];
 		bool		nulls[PGFINCORE_COLS];
@@ -1023,7 +1034,7 @@ pgfincore(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			nulls[7]  = true;
+			nulls[7] = true;
 			values[7] = (Datum) NULL;
 		}
 		/* number of pages dirty in OS cache */
@@ -1033,8 +1044,8 @@ pgfincore(PG_FUNCTION_ARGS)
 		/* Build the result tuple. */
 		tuple = heap_form_tuple(fctx->tupd, values, nulls);
 
-        /* prepare the number of the next segment */
-        fctx->segcount++;
+		/* prepare the number of the next segment */
+		fctx->segcount++;
 
 		/* Ok, return results, and go for next call */
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
@@ -1048,32 +1059,35 @@ PG_FUNCTION_INFO_V1(pgfincore_drawer);
 Datum
 pgfincore_drawer(PG_FUNCTION_ARGS)
 {
-        char *result,
-             *r;
-	int  len,i,k;
-	VarBit *databit;
-	bits8 *sp;
-	bits8 x;
+	char	   *result,
+			   *r;
+	int			len,
+				i,
+				k;
+	VarBit	   *databit;
+	bits8	   *sp;
+	bits8		x;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "pgfincore_drawer: databit argument shouldn't be NULL");
 
-        databit	= PG_GETARG_VARBIT_P(0);
+	databit = PG_GETARG_VARBIT_P(0);
 
-	len =  VARBITLEN(databit);
-	result = (char *) palloc((len/FINCORE_BITS) + 1);
+	len = VARBITLEN(databit);
+	result = (char *) palloc((len / FINCORE_BITS) + 1);
 	sp = VARBITS(databit);
 	r = result;
 
 	for (i = 0; i <= len - BITS_PER_BYTE; i += BITS_PER_BYTE, sp++)
 	{
 		x = *sp;
-		/*  Is this bit set ? */
-		for (k = 0; k < (BITS_PER_BYTE/FINCORE_BITS); k++)
+		/* Is this bit set ? */
+		for (k = 0; k < (BITS_PER_BYTE / FINCORE_BITS); k++)
 		{
-		  char out = ' ';
+			char		out = ' ';
+
 			if (IS_HIGHBIT_SET(x))
-			  out = '.' ;
+				out = '.';
 			x <<= 1;
 			if (FINCORE_BITS > 1)
 			{
@@ -1088,11 +1102,12 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	{
 		/* print the last partial byte */
 		x = *sp;
-		for (k = i; k < (len/FINCORE_BITS); k++)
+		for (k = i; k < (len / FINCORE_BITS); k++)
 		{
-		        char out = ' ';
+			char		out = ' ';
+
 			if (IS_HIGHBIT_SET(x))
-			  out = '.' ;
+				out = '.';
 			x <<= 1;
 			if (FINCORE_BITS > 1)
 			{
