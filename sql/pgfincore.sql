@@ -51,3 +51,17 @@ select from pgfadvise_normal('test');
 -- tests drawers
 --
 select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
+
+
+--
+-- tests pg_sysconf_size
+--
+-- assume most systems have same defaults
+-- it's possible to add another output file
+-- to manage larger PostgreSQL and or system page size.
+select pg_page_size, sys_pages_size from pg_sysconf_size();
+
+--
+-- tests vm_free_pages
+--
+select from vm_free_pages();
