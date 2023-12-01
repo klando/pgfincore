@@ -111,6 +111,23 @@ select from vm_free_pages();
 --
 (1 row)
 
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
+select from pgfadvise_loader('test', 0, true, true, B'1000');
+--
+(1 row)
+
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
+select from pgfadvise_loader('test', 0, true, true, B'0000');
+--
+(1 row)
+
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 --
 -- tests vm_cachestat
 --
@@ -142,28 +159,19 @@ select from pgfadvise_loader('test', 0, true, true, B'1111');
 (1 row)
 
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
- pages_mem | nr_cache 
------------+----------
-         4 |        4
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select from pgfadvise_loader('test', 0, true, true, B'1000');
 --
 (1 row)
 
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
- pages_mem | nr_cache 
------------+----------
-         1 |        1
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select from pgfadvise_loader('test', 0, true, true, B'0000');
 --
 (1 row)
 
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
- pages_mem | nr_cache 
------------+----------
-         0 |        0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
