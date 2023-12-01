@@ -44,7 +44,16 @@
 PG_MODULE_MAGIC;
 #endif
 
-#define PGSYSCONF_COLS  		3
+#define PG_SYSCONF_SIZE_COLS	3
+static long		_sc_pagesize	= 0;
+static long		_sc_phys_pages	= 0;
+
+PG_FUNCTION_INFO_V1(pg_sysconf_size);
+Datum	pg_sysconf_size(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1(vm_free_pages);
+Datum	vm_free_pages(PG_FUNCTION_ARGS);
+
 #define PGFADVISE_COLS			4
 #define PGFADVISE_LOADER_COLS	5
 #define PGFINCORE_COLS  		10
@@ -62,6 +71,7 @@ PG_MODULE_MAGIC;
 #else
 #define FINCORE_BITS    2
 #endif
+
 /*
  * pgfadvise_fctx structure is needed
  * to keep track of relation path, segment number, ...
@@ -127,8 +137,6 @@ typedef struct
 	VarBit	*databit;
 } pgfincoreStruct;
 
-Datum pgsysconf(PG_FUNCTION_ARGS);
-
 Datum 		pgfadvise(PG_FUNCTION_ARGS);
 static int	pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv);
 
@@ -151,44 +159,6 @@ Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
         relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #endif
 
-/*
- * pgsysconf
- * just output the actual system value for
- * _SC_PAGESIZE     --> Page Size
- * _SC_AVPHYS_PAGES --> Free page in memory
- * _SC_PHYS_PAGES   --> Total memory
- *
- */
-PG_FUNCTION_INFO_V1(pgsysconf);
-Datum
-pgsysconf(PG_FUNCTION_ARGS)
-{
-	HeapTuple	tuple;
-	TupleDesc	tupdesc;
-	Datum		values[PGSYSCONF_COLS];
-	bool		nulls[PGSYSCONF_COLS];
-
-	/* initialize nulls array to build the tuple */
-	memset(nulls, 0, sizeof(nulls));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "pgsysconf: return type must be a row type");
-
-	/* Page size */
-	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
-
-	/* free page in memory */
-	values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));
-
-	/* total memory */
-	values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));
-
-	/* Build and return the result tuple. */
-	tuple = heap_form_tuple(tupdesc, values, nulls);
-	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
-}
-
 #if defined(USE_POSIX_FADVISE)
 /*
  * pgfadvise_file
@@ -209,7 +179,9 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 	/*
 	 * OS Page size and Free pages
 	 */
-	pgfdv->pageSize	= sysconf(_SC_PAGESIZE);
+	if (_sc_pagesize == 0)
+		_sc_pagesize = sysconf(_SC_PAGESIZE);
+	pgfdv->pageSize = _sc_pagesize;
 
 	/*
 	 * Fopen and fstat file
@@ -472,7 +444,9 @@ pgfadvise_loader_file(char *filename,
 	/*
 	 * OS things : Page size
 	 */
-	pgfloader->pageSize = sysconf(_SC_PAGESIZE);
+	if (_sc_pagesize == 0)
+		_sc_pagesize = sysconf(_SC_PAGESIZE);
+	pgfloader->pageSize = _sc_pagesize;
 
 	/*
 	 * we count the action we perform
@@ -717,7 +691,9 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	/*
 	 * OS Page size
 	 */
-	pgfncr->pageSize  = sysconf(_SC_PAGESIZE);
+	if (_sc_pagesize == 0)
+	  _sc_pagesize = sysconf(_SC_PAGESIZE);
+	pgfncr->pageSize  = _sc_pagesize;
 
 	/*
 	 * Initialize counters
@@ -1110,4 +1086,58 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 
 	*r = '\0';
 	PG_RETURN_CSTRING(result);
+}
+
+/*
+ * Output the value for:
+ * - System page size:    sysconf(_SC_PAGESIZE)
+ * - Total memory:        sysconf(_SC_PHYS_PAGES)
+ * - PostgreSQL page size
+ *
+ * All of them are of interest to output size in bytes instead of blocks with
+ * other functions provided by pgfincore.
+ * We consider the values are immutable.
+ */
+Datum
+pg_sysconf_size(PG_FUNCTION_ARGS)
+{
+	TupleDesc	tupdesc;
+	Datum		values[PG_SYSCONF_SIZE_COLS];
+	bool		nulls[PG_SYSCONF_SIZE_COLS] = {0};
+	int			col = 0;
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				errcode(ERRCODE_DATATYPE_MISMATCH),
+				errmsg("return type must be a row type"),
+				errhint("please report a bug if you get this message: function is not correctly defined"));
+
+	if (_sc_pagesize == 0)
+		_sc_pagesize = sysconf(_SC_PAGESIZE);
+
+	if (_sc_phys_pages == 0)
+		_sc_phys_pages = sysconf(_SC_PHYS_PAGES);
+
+	/* PostgreSQL Page size */
+	values[col++] = Int64GetDatum((off_t) BLCKSZ);
+	/* System Page size */
+	values[col++] = Int64GetDatum(_sc_pagesize);
+	/* total memory */
+	values[col++] = Int64GetDatum(_sc_phys_pages);
+
+	/* Build and return the result tuple. */
+	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
+
+/*
+ * vm_free_pages
+ * just output the actual system value for
+ * _SC_AVPHYS_PAGES --> Free page in memory
+ */
+Datum
+vm_free_pages(PG_FUNCTION_ARGS)
+{
+	long free_pages = sysconf(_SC_AVPHYS_PAGES);
+	PG_RETURN_INT64(free_pages);
 }

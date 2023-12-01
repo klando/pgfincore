@@ -92,3 +92,22 @@ select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
  
 (1 row)
 
+--
+-- tests pg_sysconf_size
+--
+-- assume most systems have same defaults
+-- it's possible to add another output file
+-- to manage larger PostgreSQL and or system page size.
+select pg_page_size, sys_pages_size from pg_sysconf_size();
+ pg_page_size | sys_pages_size 
+--------------+----------------
+         8192 |           4096
+(1 row)
+
+--
+-- tests vm_free_pages
+--
+select from vm_free_pages();
+--
+(1 row)
+
