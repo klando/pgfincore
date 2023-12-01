@@ -163,30 +163,26 @@ PG_FUNCTION_INFO_V1(pgsysconf);
 Datum
 pgsysconf(PG_FUNCTION_ARGS)
 {
-	HeapTuple	tuple;
-	TupleDesc	tupdesc;
-	Datum		values[PGSYSCONF_COLS];
-	bool		nulls[PGSYSCONF_COLS];
+        TupleDesc       tupdesc;
+        Datum           values[PGSYSCONF_COLS] = {0};
+        bool            nulls[PGSYSCONF_COLS] = {0};
+        int             col = 0;
 
-	/* initialize nulls array to build the tuple */
-	memset(nulls, 0, sizeof(nulls));
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+                ereport(ERROR,
+                                errcode(ERRCODE_DATATYPE_MISMATCH),
+                                errmsg("return type must be a row type"));
 
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "pgsysconf: return type must be a row type");
+        /* Page size */
+        values[col++] = Int64GetDatum((off_t) sysconf(_SC_PAGESIZE));
+        /* free page in memory */
+        values[col++] = Int64GetDatum((off_t) sysconf(_SC_AVPHYS_PAGES));
+        /* total memory */
+        values[col++] = Int64GetDatum((off_t) sysconf(_SC_PHYS_PAGES));
 
-	/* Page size */
-	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
-
-	/* free page in memory */
-	values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));
-
-	/* total memory */
-	values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));
-
-	/* Build and return the result tuple. */
-	tuple = heap_form_tuple(tupdesc, values, nulls);
-	PG_RETURN_DATUM( HeapTupleGetDatum(tuple) );
+        /* Build and return the result tuple. */
+        PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
 }
 
 #if defined(USE_POSIX_FADVISE)
