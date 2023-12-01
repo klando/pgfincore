@@ -11,7 +11,7 @@
 #include <stdlib.h>				/* exit, calloc, free */
 #include <sys/stat.h>			/* stat, fstat */
 #include <sys/types.h>			/* size_t, mincore */
-#include <sys/mman.h>			/* mmap, mincore */
+#include <sys/mman.h>			/* mmap, mincore, cachestat */
 #include <unistd.h>				/* sysconf, close */
 /* } */
 
@@ -23,13 +23,21 @@
 #include "catalog/namespace.h"	/* makeRangeVarFromNameList */
 #include "catalog/pg_type.h"	/* TEXTOID for tuple_desc */
 #include "funcapi.h"			/* SRF */
+#include "miscadmin.h"			/* GetUserId() */
+#include "utils/acl.h"			/* AclResult */
 #include "utils/builtins.h"		/* textToQualifiedNameList */
+#include "utils/lsyscache.h"	/* get_rel_name */
+#if PG_MAJOR_VERSION < 1600
+#include "pgstat.h"				/* pgstat_report_wait_end */
+#else
+#include "utils/wait_event.h"	/* pgstat_report_wait_end */
+#endif
 #include "utils/rel.h"			/* Relation */
 #include "utils/varbit.h"		/* bitstring datatype */
-#include "storage/fd.h"
+#include "storage/bufmgr.h"	/* RelationGetNumberOfBlocksInFork */
+#include "storage/fd.h"			/* FileAcces */
 #include "access/htup_details.h"	/* heap_form_tuple */
 #include "common/relpath.h"		/* relpathbackend */
-
 #ifdef PG_VERSION_NUM
 #define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
 #else
@@ -62,6 +70,64 @@ PG_MODULE_MAGIC;
 #else
 #define FINCORE_BITS    2
 #endif
+
+/* CACHESTAT */
+#define ALLOW_CACHESTAT
+#define VM_CACHESTAT_COLS	7
+
+#if defined(__linux__)
+/* cachestat syscall is linux only */
+#define MAY_HAVE_CACHESTAT	1
+#ifndef __NR_cachestat
+#if defined(__alpha__)
+#define __NR_cachestat 561
+#else
+#define __NR_cachestat 451
+#endif							/* __alpha__ */
+#endif							/* __NR_cachestat */
+struct cachestat_range
+{
+	__u64		off;
+	__u64		len;
+};
+
+struct cachestat
+{
+	/* Number of cached pages */
+	__u64		nr_cache;
+	/* Number of dirty pages */
+	__u64		nr_dirty;
+	/* Number of pages marked for writeback. */
+	__u64		nr_writeback;
+	/* Number of pages evicted from the cache. */
+	__u64		nr_evicted;
+
+	/*
+	 * Number of recently evicted pages. A page is recently evicted if its
+	 * last eviction was recent enough that its reentry to the cache would
+	 * indicate that it is actively being used by the system, and that there
+	 * is memory pressure on the system.
+	 */
+	__u64		nr_recently_evicted;
+};
+#endif /* __linux__ */
+
+static char	*_mdfd_segpath(SMgrRelation reln, ForkNumber forkNum,
+						   BlockNumber segno);
+
+PG_FUNCTION_INFO_V1(vm_cachestat);
+Datum		vm_cachestat(PG_FUNCTION_ARGS);
+static long	RelationCachestat(Relation rel, ForkNumber forkNumber,
+							  BlockNumber blockNum, BlockNumber nblocks,
+							  struct cachestat *cstatsum);
+static long	SegmentCachestat(SMgrRelation reln, ForkNumber forkNum,
+							 BlockNumber segno, BlockNumber blockNum,
+							 BlockNumber nblocks, struct cachestat *cstat);
+static long	FileCachestat(unsigned int fd, struct cachestat_range *cstat_range,
+						  struct cachestat *cstat, uint32 wait_event_info);
+static long	sys_cachestat(unsigned int fd, struct cachestat_range *cstat_range,
+						  struct cachestat *cstat, unsigned int flags);
+
 /*
  * pgfadvise_fctx structure is needed
  * to keep track of relation path, segment number, ...
@@ -1121,4 +1187,375 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 
 	*r = '\0';
 	PG_RETURN_CSTRING(result);
+}
+
+/*
+ * Return the filename for the specified segment of the relation. The
+ * returned string is palloc'd.
+ *
+ * IMPORTED from PostgreSQL source-code as-is
+ */
+static char *
+_mdfd_segpath(SMgrRelation reln, ForkNumber forkNum, BlockNumber segno)
+{
+	char	   *path,
+			   *fullpath;
+
+#if PG_MAJOR_VERSION < 1600
+	path = relpath(reln->smgr_rnode, forkNum);
+#else
+	path = relpath(reln->smgr_rlocator, forkNum);
+#endif
+
+	if (segno > 0)
+	{
+		fullpath = psprintf("%s.%u", path, segno);
+		pfree(path);
+	}
+	else
+		fullpath = path;
+
+	return fullpath;
+}
+
+/*
+ * Implement linux 6.5 cachestat
+ * vm_cachestat returns number of pages as viewed by the system
+ * math must be done to get the sizing in postgresql pages instead.
+ * XXX: make it work with windows
+ */
+Datum
+vm_cachestat(PG_FUNCTION_ARGS)
+{
+	AclResult	aclresult;
+	int			blockNum;
+	Oid			relOid;
+	text	   *forkName;
+	ForkNumber	forkNumber;
+	char	   *forkString;
+	int			nblocks;
+	Relation	rel;
+	struct cachestat cstatsum = {0};
+	long		ret;
+
+	TupleDesc	tupdesc;
+	int			col = 0;
+	Datum		values[VM_CACHESTAT_COLS] = {0};
+	bool		nulls[VM_CACHESTAT_COLS] = {0};
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				errcode(ERRCODE_DATATYPE_MISMATCH),
+				errmsg("return type must be a row type"),
+				errhint("please report a bug if you get this message: function is not correctly defined"));
+
+	/* Basic sanity checking. */
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation cannot be NULL"),
+				errhint("check parameters"));
+	relOid = PG_GETARG_OID(0);
+
+	if (PG_ARGISNULL(1))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation fork cannot be NULL"),
+				errhint("check parameters"));
+	forkName = PG_GETARG_TEXT_PP(1);
+	forkString = text_to_cstring(forkName);
+	forkNumber = forkname_to_number(forkString);
+
+	/* Open relation and check privileges. */
+	rel = relation_open(relOid, AccessShareLock);
+	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
+					   get_rel_name(relOid));
+
+	/* Check that the fork exists. */
+	if (!smgrexists(RelationGetSmgr(rel), forkNumber))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("fork \"%s\" does not exist for the relation \"%s\"",
+					   forkString, get_rel_name(relOid)),
+				errhint("check parameters"));
+
+	/* Validate block numbers, or handle nulls. */
+	if (PG_ARGISNULL(2))
+		blockNum = InvalidBlockNumber;
+	else
+	{
+		blockNum = PG_GETARG_INT64(2);
+		if (blockNum < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("starting block number cannot be negative"),
+					errhint("check parameters")
+					);
+	}
+	if (PG_ARGISNULL(3))
+		nblocks = 0;
+	else
+	{
+		nblocks = PG_GETARG_INT64(3);
+		if (nblocks < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("number of blocks cannot be negative"),
+					errhint("check parameters"));
+	}
+
+	/* Get the stats */
+	ret = RelationCachestat(rel, forkNumber, blockNum, nblocks, &cstatsum);
+
+	/* Close relation, release lock. */
+	relation_close(rel, AccessShareLock);
+
+	/* ERROR out if any error */
+	if (ret)
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("sys_cachestat returns: %m"),
+				errhint("please report a bug if you get this message"));
+
+	/* system page size */
+	values[col++] = Int64GetDatum((off_t) sysconf(_SC_PAGESIZE));
+	/* Number of cached pages */
+	values[col++] = Int64GetDatum(cstatsum.nr_cache);
+	/* Number of dirty pages */
+	values[col++] = Int64GetDatum(cstatsum.nr_dirty);
+	/* Number of pages marked for writeback. */
+	values[col++] = Int64GetDatum(cstatsum.nr_writeback);
+	/* Number of pages evicted from the cache. */
+	values[col++] = Int64GetDatum(cstatsum.nr_evicted);
+
+	/*
+	 * Number of recently evicted pages. A page is recently evicted if its
+	 * last eviction was recent enough that its reentry to the cache would
+	 * indicate that it is actively being used by the system, and that there
+	 * is memory pressure on the system.
+	 */
+	values[col++] = Int64GetDatum(cstatsum.nr_recently_evicted);
+	/* postgres page size */
+	values[col++] = Int64GetDatum((off_t) BLCKSZ);
+
+	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
+
+/*
+ * RelationCachestat collects kernel cache stats of all or part of a relation.
+ * The function takes care to each relevant segment:
+ * The underlying sys_cachestat() allows to collect the stats of all or a region
+ * of a file.
+ * In order to get stats of the full relation:
+ * pass blockNum=InvalidBlockNumber
+ * It is a bit annoying from user point of view as blockNum is used to find the
+ * relevant segment: getting stats of all "segment 2" requires the user to pass
+ * the blockNum matching with the first page of the "segment 2"!
+ * An alternative solution is to use SegmentCachestat() which works on a single
+ * segment.
+ */
+static long
+RelationCachestat(Relation rel, ForkNumber forkNum, BlockNumber blockNum,
+				  BlockNumber nblocks, struct cachestat *cstatsum)
+{
+	SMgrRelation reln = RelationGetSmgr(rel);
+	BlockNumber blocks = 0;
+	BlockNumber relblocks = RelationGetNumberOfBlocksInFork(rel, forkNum);
+
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+
+	/*
+	 * If stats of the full relation, we need to pass {0,0} to cachestat for
+	 * each segment.
+	 */
+	if (blockNum == InvalidBlockNumber)
+	{
+		blockNum = 0;
+		nblocks = 0;
+		blocks = relblocks;
+	}
+
+	if (nblocks == InvalidBlockNumber)
+		nblocks = 0;
+
+	if (blockNum > relblocks)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("starting block (%u) cannot be greater than number of blocks in relation (%u)",
+					   blockNum, relblocks),
+				errhint("check parameters"));
+
+	if (blockNum + nblocks > relblocks)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("starting block (%u) and number of blocks (%u) cannot be greater than number of blocks in relation (%u)",
+					   blockNum, nblocks, relblocks),
+				errhint("check parameters"));
+
+	if (nblocks)
+		blocks = nblocks;
+
+	/*
+	 * Issue stat requests in as few requests as possible; have to split at
+	 * segment boundaries though, since those are actually separate files.
+	 */
+	while (blocks > 0)
+	{
+		struct cachestat cstat = {0};
+		BlockNumber nstat = blocks;
+		long		rc;
+		int			seglen = 0;
+		int			segnum_start = blockNum / RELSEG_SIZE;
+		int			segnum_end = (blockNum + blocks - 1) / RELSEG_SIZE;
+
+		if (segnum_start != segnum_end)
+			nstat = RELSEG_SIZE - (blockNum % ((BlockNumber) RELSEG_SIZE));
+
+		if (nblocks > 0)
+			seglen = nstat;
+
+		CHECK_FOR_INTERRUPTS();
+		rc = SegmentCachestat(reln, forkNum, segnum_start, blockNum, seglen, &cstat);
+		if (rc)
+			return rc;
+
+		/*
+		 * Here we sum the results for the relation. We might collect details
+		 * but it does not cost much to execute this functions per segment by
+		 * providing the relevant "start block".
+		 */
+		cstatsum->nr_cache += cstat.nr_cache;
+		cstatsum->nr_dirty += cstat.nr_dirty;
+		cstatsum->nr_writeback += cstat.nr_writeback;
+		cstatsum->nr_evicted += cstat.nr_evicted;
+		cstatsum->nr_recently_evicted += cstat.nr_recently_evicted;
+
+		blocks -= nstat;
+		blockNum += nstat;
+	}
+
+	elog(DEBUG1, "sum:\t\tnr_cache:%llu, nr_dirty:%llu, nr_writeback:%llu, nr_evicted:%llu, nr_recently_evicted:%llu",
+		 cstatsum->nr_cache, cstatsum->nr_dirty, cstatsum->nr_writeback,
+		 cstatsum->nr_evicted, cstatsum->nr_recently_evicted);
+
+	return 0;
+}
+
+/*
+ * SegmentCachestat collects kernel cache stats of a relation's segment.
+ * Pay attention, blockNum is the starting block in the current segment, not
+ * in the "relation".
+ * Contrary to RelationCachestat(), SegmentCachestat() respects linux
+ * sys_cachestat() inputs value (i.e. pass {0,0} as (blockNum,nblocks) to get
+ * stats of the whole file.
+ */
+static long
+SegmentCachestat(SMgrRelation reln, ForkNumber forkNum, BlockNumber segno,
+				 BlockNumber blockNum, BlockNumber nblocks,
+				 struct cachestat *cstat)
+{
+	int			fd;
+	long		rc;
+	char	   *fullpath;
+	struct cachestat_range cstat_range = {
+		(off_t) BLCKSZ * blockNum,
+		(off_t) BLCKSZ * nblocks
+	};
+
+	Assert(segno >= 0);
+	Assert(blockNum >= 0);
+	Assert(nblocks >= 0);
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+
+	fullpath = _mdfd_segpath(reln, forkNum, segno);
+	fd = OpenTransientFile(fullpath, O_RDONLY | PG_BINARY);
+	pfree(fullpath);
+	if (fd < 0)
+	{
+		if (errno != ENOENT)
+			ereport(ERROR, (errcode_for_file_access(),
+						  errmsg("could not read segment %u", segno),
+						  errhint("please report a bug if you get this message")));
+		return false;
+	}
+
+	rc = FileCachestat(fd, &cstat_range, cstat, PG_WAIT_EXTENSION);
+
+	if (CloseTransientFile(fd) != 0)
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not close segment %u", segno),
+				 errhint("please report a bug if you get this message")));
+
+	if (rc)
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("FileCachestat returns: %m"),
+				errhint("please report a bug if you get this message"));
+
+	elog(DEBUG1, "segment %d:\tnr_cache:%llu, nr_dirty:%llu, nr_writeback:%llu, nr_evicted:%llu, nr_recently_evicted:%llu",
+		 segno, cstat->nr_cache, cstat->nr_dirty, cstat->nr_writeback,
+		 cstat->nr_evicted, cstat->nr_recently_evicted);
+
+	return rc;
+}
+
+/*
+ * FileCachestat collects kernel cache stats of all or a portion of a file.
+ */
+static long
+FileCachestat(unsigned int fd, struct cachestat_range *cstat_range,
+			  struct cachestat *cstat, uint32 wait_event_info)
+{
+	long		rc = -1;
+#if defined(MAY_HAVE_CACHESTAT)
+	elog(DEBUG1, "range: off: %llu bytes, len: %llu bytes",
+		 cstat_range->off, cstat_range->len);
+
+	pgstat_report_wait_start(wait_event_info);
+	rc = sys_cachestat(fd, cstat_range, cstat, 0);
+	pgstat_report_wait_end();
+	if (rc == -1)
+	{
+		if (errno == ENOSYS)
+			ereport(ERROR,
+					errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("sys_cachestat is not available: %m"),
+					errhint("linux 6.5 minimum is required!"));
+		else
+			ereport(ERROR,
+					errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("sys_cachestat returns: %m"),
+					errhint("please report a bug if you get this message"));
+	}
+#else
+	ereport(WARNING,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("cachestat is supported only on linux"),
+			errhint("see vm_mincore instead on others UNIX-like systems"));
+#endif	/* MAY_HAVE_CACHESTAT */
+	return rc;
+}
+
+/*
+ * Implement linux 6.5 sys_cachestat
+ */
+static long
+sys_cachestat(unsigned int fd,
+			  struct cachestat_range *cstat_range,
+			  struct cachestat *cstat, unsigned int flags)
+{
+	long		rc = -1;
+#if defined(ALLOW_CACHESTAT)
+	rc = syscall(__NR_cachestat, fd, cstat_range, cstat, flags);
+#else
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("cannot execute sys_cachestat: ALLOW_CACHESTAT is not defined"),
+			errhint("build pgfincore with ALLOW_CACHESTAT defined to get access to the feature"));
+#endif	/* ALLOW_CACHESTAT */
+	return rc;
 }

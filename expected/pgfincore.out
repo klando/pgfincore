@@ -92,3 +92,59 @@ select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
  
 (1 row)
 
+--
+-- tests vm_cachestat
+--
+-- Test bad parameters
+select * from vm_cachestat(NULL, NULL, -1, -1);
+ERROR:  relation cannot be NULL
+HINT:  check parameters
+select * from vm_cachestat('test', NULL, -1, -1);
+ERROR:  relation fork cannot be NULL
+HINT:  check parameters
+select * from vm_cachestat('test', 'vm', -1, -1);
+ERROR:  fork "vm" does not exist for the relation "test"
+HINT:  check parameters
+select * from vm_cachestat('test', 'main', -1, -1);
+ERROR:  starting block number cannot be negative
+HINT:  check parameters
+select * from vm_cachestat('test', 'main', NULL, -1);
+ERROR:  number of blocks cannot be negative
+HINT:  check parameters
+select * from vm_cachestat('test', 'main', 10, NULL);
+ERROR:  starting block (10) cannot be greater than number of blocks in relation (2)
+HINT:  check parameters
+select * from vm_cachestat('test', 'main', 0, 10);
+ERROR:  starting block (0) and number of blocks (10) cannot be greater than number of blocks in relation (2)
+HINT:  check parameters
+-- Working cases
+select from pgfadvise_loader('test', 0, true, true, B'1111');
+--
+(1 row)
+
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ pages_mem | nr_cache 
+-----------+----------
+         4 |        4
+(1 row)
+
+select from pgfadvise_loader('test', 0, true, true, B'1000');
+--
+(1 row)
+
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ pages_mem | nr_cache 
+-----------+----------
+         1 |        1
+(1 row)
+
+select from pgfadvise_loader('test', 0, true, true, B'0000');
+--
+(1 row)
+
+select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+ pages_mem | nr_cache 
+-----------+----------
+         0 |        0
+(1 row)
+
