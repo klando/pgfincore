@@ -128,6 +128,17 @@ static long	FileCachestat(unsigned int fd, struct cachestat_range *cstat_range,
 static long	sys_cachestat(unsigned int fd, struct cachestat_range *cstat_range,
 						  struct cachestat *cstat, unsigned int flags);
 
+PG_FUNCTION_INFO_V1(vm_fadvise);
+Datum		vm_fadvise(PG_FUNCTION_ARGS);
+static int	RelationFadvise(Relation rel, ForkNumber forkNum,
+							BlockNumber blockNum,BlockNumber nblocks,
+						   int advice);
+static int	SegmentFadvise(SMgrRelation reln, ForkNumber forkNum,
+						   BlockNumber segno, BlockNumber blockNum,
+						   BlockNumber nblocks, int advice);
+static int	FileFadvise(unsigned int fd, off_t offset, off_t len, int advice,
+						uint32 wait_event_info);
+
 
 /*
  * pgfadvise_fctx structure is needed
@@ -1558,5 +1569,294 @@ sys_cachestat(unsigned int fd,
 			errmsg("cannot execute sys_cachestat: ALLOW_CACHESTAT is not defined"),
 			errhint("build pgfincore with ALLOW_CACHESTAT defined to get access to the feature"));
 #endif	/* ALLOW_CACHESTAT */
+	return rc;
+}
+
+
+/*
+ * Call posix_fadvise
+ */
+Datum
+vm_fadvise(PG_FUNCTION_ARGS)
+{
+	AclResult	aclresult;
+	int			blockNum;
+	Oid			relOid;
+	text	   *forkName;
+	ForkNumber	forkNumber;
+	char	   *forkString;
+	int			nblocks;
+	Relation	rel;
+	int			ret;
+	text		*adviceName;
+    char		*adviceString;
+	int			advice;
+
+	/* Basic sanity checking. */
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation cannot be NULL"),
+				errhint("check parameters"));
+	relOid = PG_GETARG_OID(0);
+
+	if (PG_ARGISNULL(1))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation fork cannot be NULL"),
+				errhint("check parameters"));
+	forkName = PG_GETARG_TEXT_PP(1);
+	forkString = text_to_cstring(forkName);
+	forkNumber = forkname_to_number(forkString);
+
+	/* Validate block numbers, or handle nulls. */
+	if (PG_ARGISNULL(2))
+		blockNum = InvalidBlockNumber;
+	else
+	{
+		blockNum = PG_GETARG_INT64(2);
+		if (blockNum < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("starting block number cannot be negative"),
+					errhint("check parameters"));
+	}
+	if (PG_ARGISNULL(3))
+		nblocks = 0;
+	else
+	{
+		nblocks = PG_GETARG_INT64(3);
+		if (nblocks < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("number of blocks cannot be negative"),
+					errhint("check parameters"));
+	}
+	/* Check advice */
+	if (PG_ARGISNULL(4))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("advice cannot be NULL"),
+				errhint("check parameters"));
+    adviceName = PG_GETARG_TEXT_PP(4);
+	adviceString = text_to_cstring(adviceName);
+
+	/* Open relation and check privileges. */
+	rel = relation_open(relOid, AccessShareLock);
+	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
+					   get_rel_name(relOid));
+
+	/* Check that the fork exists. */
+	if (!smgrexists(RelationGetSmgr(rel), forkNumber))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("fork \"%s\" does not exist for the relation \"%s\"",
+					   forkString, get_rel_name(relOid)),
+				errhint("check parameters"));
+
+    if (strcmp(adviceString, "POSIX_FADV_NORMAL") == 0) {
+        advice = POSIX_FADV_NORMAL;
+    } else if (strcmp(adviceString, "POSIX_FADV_SEQUENTIAL") == 0) {
+        advice = POSIX_FADV_SEQUENTIAL;
+    } else if (strcmp(adviceString, "POSIX_FADV_RANDOM") == 0) {
+        advice = POSIX_FADV_RANDOM;
+    } else if (strcmp(adviceString, "POSIX_FADV_NOREUSE") == 0) {
+        ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("%s is no-op", adviceString));
+        PG_RETURN_NULL();
+    } else if (strcmp(adviceString, "POSIX_FADV_WILLNEED") == 0) {
+        advice = POSIX_FADV_WILLNEED;
+    } else if (strcmp(adviceString, "POSIX_FADV_DONTNEED") == 0) {
+        advice = POSIX_FADV_DONTNEED;
+    } else {
+        ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("Invalid advice string: %s", adviceString),
+				errhint("check parameters"));
+        PG_RETURN_NULL();
+	}
+
+	/* OK, call posix_fadvise */
+	ret = RelationFadvise(rel, forkNumber, blockNum, nblocks, advice);
+
+	/* Close relation, release lock. */
+	relation_close(rel, AccessShareLock);
+
+	/* ERROR out if any error */
+	if (ret)
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("posix_fadvise returns: %m"),
+				errhint("please report a bug if you get this message"));
+
+    PG_RETURN_VOID();
+}
+
+/*
+ * RelationFadvise set posix_advise flags on all or part of a relation.
+ * The function takes care to each relevant segment:
+ * The underlying posix_fadvise() allows to flag all or a region of a file.
+ * In order to flag the full relation:
+ * pass blockNum=InvalidBlockNumber
+ * It is a bit annoying from user point of view as blockNum is used to find the
+ * relevant segment: flagging all "segment 2" requires the user to pass
+ * the blockNum matching with the first page of the "segment 2"!
+ * An alternative solution is to use SegmentFadvise() which works on a single
+ * segment.
+ */
+static int
+RelationFadvise(Relation rel, ForkNumber forkNum, BlockNumber blockNum,
+				  BlockNumber nblocks, int advice)
+{
+	SMgrRelation reln = RelationGetSmgr(rel);
+	BlockNumber blocks = 0;
+	BlockNumber relblocks = RelationGetNumberOfBlocksInFork(rel, forkNum);
+
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+
+	/*
+	 * If stats of the full relation, we need to pass {0,0} to cachestat for
+	 * each segment.
+	 */
+	if (blockNum == InvalidBlockNumber)
+	{
+		blockNum = 0;
+		nblocks = 0;
+		blocks = relblocks;
+	}
+
+	if (nblocks == InvalidBlockNumber)
+		nblocks = 0;
+
+	if (blockNum > relblocks)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("starting block (%u) cannot be greater than number of blocks in relation (%u)",
+					   blockNum, relblocks),
+				errhint("check parameters"));
+
+	if (blockNum + nblocks > relblocks)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("starting block (%u) and number of blocks (%u) cannot be greater than number of blocks in relation (%u)",
+					   blockNum, nblocks, relblocks),
+				errhint("check parameters"));
+
+	if (nblocks)
+		blocks = nblocks;
+
+	/*
+	 * Issue stat requests in as few requests as possible; have to split at
+	 * segment boundaries though, since those are actually separate files.
+	 */
+	while (blocks > 0)
+	{
+		BlockNumber nstat = blocks;
+		long		rc;
+		int			seglen = 0;
+		int			segnum_start = blockNum / RELSEG_SIZE;
+		int			segnum_end = (blockNum + blocks - 1) / RELSEG_SIZE;
+
+		if (segnum_start != segnum_end)
+			nstat = RELSEG_SIZE - (blockNum % ((BlockNumber) RELSEG_SIZE));
+
+		if (nblocks > 0)
+			seglen = nstat;
+
+		rc = SegmentFadvise(reln, forkNum, segnum_start, blockNum, seglen,
+							advice);
+
+		if (rc)
+			return rc;
+
+		blocks -= nstat;
+		blockNum += nstat;
+	}
+
+	return 0;
+}
+
+/*
+ * SegmentFadvise set posix_advise flags on a relation's segment.
+ * Pay attention, blockNum is the starting block in the current segment, not
+ * in the "relation".
+ * Contrary to RelationFadvise(), SegmentFadvise() respects posix_fadvise()
+ * inputs value (i.e. pass {0,0} as (blockNum,nblocks) to flag the whole file.
+ */
+static int
+SegmentFadvise(SMgrRelation reln, ForkNumber forkNum, BlockNumber segno,
+			   BlockNumber blockNum, BlockNumber nblocks, int advice)
+{
+	int			fd;
+	int64		rc;
+	char	   *fullpath;
+	off_t		offset = (off_t) BLCKSZ * blockNum;
+	off_t		len = (off_t) BLCKSZ * nblocks;
+
+	Assert(segno >= 0);
+	Assert(blockNum >= 0);
+	Assert(nblocks >= 0);
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+
+	fullpath = _mdfd_segpath(reln, forkNum, segno);
+	fd = OpenTransientFile(fullpath, O_RDONLY | PG_BINARY);
+	pfree(fullpath);
+	if (fd < 0)
+	{
+		if (errno != ENOENT)
+			ereport(LOG, (errcode_for_file_access(),
+						  errmsg("could not read segment %u", segno),
+						  errhint("please report a bug if you get this message")));
+		return false;
+	}
+
+	rc = FileFadvise( fd, offset, len, advice, PG_WAIT_EXTENSION);
+
+	if (CloseTransientFile(fd) != 0)
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not close segment %u", segno),
+				 errhint("please report a bug if you get this message")));
+
+	if (rc)
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("FileFadvise returns: %m"),
+				errhint("please report a bug if you get this message")); /* TODO: does PostgreSQL uses perror() ? */
+
+	return rc;
+}
+
+/*
+ * FileFadvise is a posix_fadvise wrapper.
+ *
+ */
+static int
+FileFadvise(unsigned int fd, off_t offset, off_t len, int advice,
+			uint32 wait_event_info)
+{
+	int		rc = -1;
+#if defined(USE_POSIX_FADVISE)
+	elog(DEBUG1, "offset: %lu bytes, len: %lu bytes, advice: %d",
+		 offset, len, advice);
+
+	CHECK_FOR_INTERRUPTS();
+	pgstat_report_wait_start(wait_event_info);
+    rc = posix_fadvise(fd, offset, len, advice);
+	pgstat_report_wait_end();
+	if (rc)
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("posix_fadvise returns: %m"),
+				errhint("please report a bug if you get this message")); /* TODO: does PostgreSQL uses perror() ? */
+#else
+	ereport(WARNING,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("cannot execute posix_fadvise: USE_POSIX_FADVISE is not defined"),
+			errmsg("ensure your system supports posix_fadvise and build pgfincore with USE_POSIX_FADVISE defined to get access to the feature"));
+#endif							/* USE_POSIX_FADVISE */
 	return rc;
 }

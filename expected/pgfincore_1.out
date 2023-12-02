@@ -139,3 +139,73 @@ select from pgfadvise_loader('test', 0, true, true, B'0000');
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
 ERROR:  sys_cachestat is not available: Function not implemented
 HINT:  linux 6.5 minimum is required!
+--
+-- tests vm_fadvise
+--
+-- Test bad parameters
+select vm_fadvise(NULL, NULL, -1, -1, 'badflag');
+ERROR:  relation cannot be NULL
+HINT:  check parameters
+select vm_fadvise('test', NULL, -1, -1, 'badflag');
+ERROR:  relation fork cannot be NULL
+HINT:  check parameters
+select vm_fadvise('test', 'vm', -1, -1, 'badflag');
+ERROR:  starting block number cannot be negative
+HINT:  check parameters
+select vm_fadvise('test', 'main', -1, -1, 'badflag');
+ERROR:  starting block number cannot be negative
+HINT:  check parameters
+select vm_fadvise('test', 'main', NULL, -1, 'badflag');
+ERROR:  number of blocks cannot be negative
+HINT:  check parameters
+select vm_fadvise('test', 'main', 10, NULL, 'badflag');
+ERROR:  Invalid advice string: badflag
+HINT:  check parameters
+select vm_fadvise('test', 'main', 0, 10, 'badflag');
+ERROR:  Invalid advice string: badflag
+HINT:  check parameters
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_NOREUSE');
+ERROR:  POSIX_FADV_NOREUSE is no-op
+-- Working cases
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_NORMAL');
+ vm_fadvise 
+------------
+ 
+(1 row)
+
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_SEQUENTIAL');
+ vm_fadvise 
+------------
+ 
+(1 row)
+
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_RANDOM');
+ vm_fadvise 
+------------
+ 
+(1 row)
+
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_DONTNEED');
+ vm_fadvise 
+------------
+ 
+(1 row)
+
+select (pgfincore('test')).pages_mem;
+ pages_mem 
+-----------
+         0
+(1 row)
+
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_WILLNEED');
+ vm_fadvise 
+------------
+ 
+(1 row)
+
+select (pgfincore('test')).pages_mem;
+ pages_mem 
+-----------
+         4
+(1 row)
+

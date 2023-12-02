@@ -51,3 +51,15 @@ AS $vm_cachestat$
 SELECT * FROM vm_cachestat($1,'main',NULL,NULL)
 $vm_cachestat$
 LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION
+vm_fadvise(
+  relation regclass
+, fork_name text
+, block_num bigint
+, nblocks bigint
+, advice text
+)
+RETURNS VOID
+AS '$libdir/pgfincore'
+LANGUAGE C;

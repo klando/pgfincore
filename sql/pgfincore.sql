@@ -70,3 +70,24 @@ select from pgfadvise_loader('test', 0, true, true, B'1000');
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
 select from pgfadvise_loader('test', 0, true, true, B'0000');
 select (pgfincore('test')).pages_mem, (vm_cachestat('test', 'main', NULL, NULL)).nr_cache;
+
+--
+-- tests vm_fadvise
+--
+-- Test bad parameters
+select vm_fadvise(NULL, NULL, -1, -1, 'badflag');
+select vm_fadvise('test', NULL, -1, -1, 'badflag');
+select vm_fadvise('test', 'vm', -1, -1, 'badflag');
+select vm_fadvise('test', 'main', -1, -1, 'badflag');
+select vm_fadvise('test', 'main', NULL, -1, 'badflag');
+select vm_fadvise('test', 'main', 10, NULL, 'badflag');
+select vm_fadvise('test', 'main', 0, 10, 'badflag');
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_NOREUSE');
+-- Working cases
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_NORMAL');
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_SEQUENTIAL');
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_RANDOM');
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_DONTNEED');
+select (pgfincore('test')).pages_mem;
+select vm_fadvise('test', 'main', 0, 2, 'POSIX_FADV_WILLNEED');
+select (pgfincore('test')).pages_mem;
