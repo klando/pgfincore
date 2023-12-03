@@ -35,9 +35,7 @@ You can grab the latest code with git:
 
     git clone git://git.postgresql.org/git/pgfincore.git
     or
-    git://github.com/klando/pgfincore.git
-
-And the project is on pgfoundry : http://pgfoundry.org/projects/pgfincore
+    git://github.com/pgfincore/pgfincore.git
 
 ## INSTALL
 
@@ -48,14 +46,10 @@ From source code:
     su
     make install
 
-For PostgreSQL >= 9.1, log in your database and:
+Log in your database and:
 
     mydb=# CREATE EXTENSION pgfincore;
 
-For other release, create the functions from the sql script (it should be in
-your contrib directory):
-
-    psql mydb -f pgfincore.sql
 
 PgFincore is also shipped with Debian scripts to build your own package:
 
