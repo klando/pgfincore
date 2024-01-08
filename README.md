@@ -392,7 +392,7 @@ For example:
 ## REQUIREMENTS
 
  * PgFincore needs sysconf(), mincore() or fincore() and POSIX_FADVISE
- * PgFincore requires PostgreSQL > 9.3
+ * PgFincore requires PostgreSQL > 9.6
 
 ## LIMITATIONS
 

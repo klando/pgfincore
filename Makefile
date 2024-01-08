@@ -3,7 +3,8 @@ MODULES      = $(EXTENSION)
 MODULEDIR    = $(EXTENSION)
 DOCS         = README.md
 DATA         = pgfincore--1.2.sql \
-               pgfincore--1.2--1.3.1.sql
+               pgfincore--1.2--1.3.1.sql \
+               pgfincore--1.3.1--1.4.0.sql
 
 REGRESS      = $(EXTENSION)
 
@@ -13,7 +14,7 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 
 include $(PGXS)
 
-EXTVERSION   = 1.3.1
+EXTVERSION   = 1.4.0
 dist:
 	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o ../$(EXTENSION)_$(EXTVERSION).orig.tar.gz HEAD
 
