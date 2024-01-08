@@ -92,3 +92,36 @@ select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
  
 (1 row)
 
+--
+-- System/PostgreSQL info
+--
+-- assume most systems have same defaults
+-- it's possible to add another output file
+-- to manage larger PostgreSQL and or system page size.
+SELECT pg_page_size();
+ pg_page_size 
+--------------
+         8192
+(1 row)
+
+SELECT pg_segment_size();
+ pg_segment_size 
+-----------------
+          131072
+(1 row)
+
+SELECT vm_page_size();
+ vm_page_size 
+--------------
+         4096
+(1 row)
+
+-- no output for the following:
+SELECT FROM vm_physical_pages();
+--
+(1 row)
+
+SELECT FROM vm_available_pages();
+--
+(1 row)
+
