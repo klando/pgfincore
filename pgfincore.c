@@ -1113,6 +1113,15 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 }
 
 /*
+ * PG_RETURN_UINT64 appears in PostgreSQL 11
+ * and UInt64GetDatum in 10 ...
+ * it results in dropping pgfincore support for 9.4-9.6
+ */
+#if !defined(PG_RETURN_UINT64)
+#define PG_RETURN_UINT64(x)  return UInt64GetDatum(x)
+#endif
+
+/*
  * sysconf and PostgreSQL informations
  */
 PG_FUNCTION_INFO_V1(pg_page_size);
