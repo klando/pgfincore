@@ -35,9 +35,9 @@ You can grab the latest code with git:
 
     git clone git://git.postgresql.org/git/pgfincore.git
     or
+    git://github.com/pgfincore/pgfincore.git
+    or
     git://github.com/klando/pgfincore.git
-
-And the project is on pgfoundry : http://pgfoundry.org/projects/pgfincore
 
 ## INSTALL
 
@@ -48,14 +48,9 @@ From source code:
     su
     make install
 
-For PostgreSQL >= 9.1, log in your database and:
+Log in your database and:
 
     mydb=# CREATE EXTENSION pgfincore;
-
-For other release, create the functions from the sql script (it should be in
-your contrib directory):
-
-    psql mydb -f pgfincore.sql
 
 PgFincore is also shipped with Debian scripts to build your own package:
 
@@ -66,9 +61,7 @@ PgFincore is also shipped with Debian scripts to build your own package:
 
 PgFincore is packaged for *RPM* at http://yum.postgresql.org/
 PgFincore is packaged for *debian* at http://pgapt.debian.net/
-
-
-
+PgFincore extension is available with several major SQL cloud providers.
 
 ## EXAMPLES
 
@@ -327,6 +320,66 @@ For the specified relation it returns:
   * pages_dirty : if HAVE_FINCORE constant is define and the platorm provides the relevant information, like pages_mem but for dirtied pages 
   * group_dirty : if HAVE_FINCORE constant is define and the platorm provides the relevant information, like group_mem but for dirtied pages 
 
+### pg_page_size
+
+Get PostgreSQL page size in bytes:
+
+```{.sqlpostgresql}
+SELECT pg_page_size();
+ pg_page_size 
+--------------
+         8192
+(1 row)
+```
+
+### pg_segment_size
+
+Get max PostgreSQL segment size in blocks:
+
+```{.sqlpostgresql}
+SELECT pg_segment_size();
+ pg_segment_size 
+-----------------
+          131072
+(1 row)
+```
+
+### vm_available_pages
+
+Get number of available pages in system memory:
+
+```{.sqlpostgresql}
+SELECT vm_available_pages();
+ vm_available_pages 
+--------------------
+              94986
+(1 row)
+```
+
+### vm_page_size
+
+Get system page size in bytes:
+
+```{.sqlpostgresql}
+SELECT vm_page_size();
+ vm_page_size 
+--------------
+         4096
+(1 row)
+```
+
+### vm_physical_pages
+
+Get total number of physical pages in system memory:
+
+```{.sqlpostgresql}
+SELECT vm_physical_pages();
+ vm_physical_pages 
+-------------------
+           1956499
+(1 row)
+```
+
 ## DEBUG
 
 You can debug the PgFincore with the following error level: *DEBUG1* and
@@ -338,14 +391,12 @@ For example:
 
 ## REQUIREMENTS
 
- * PgFincore needs mincore() or fincore() and POSIX_FADVISE
+ * PgFincore needs sysconf(), mincore() or fincore() and POSIX_FADVISE
+ * PgFincore requires PostgreSQL > 9.3
 
 ## LIMITATIONS
 
  * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
-
- * PgFincore needs PostgreSQL >= 8.3
-
  * PgFincore does not work on windows.
 
 ## SEE ALSO
