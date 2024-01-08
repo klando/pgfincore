@@ -1,11 +1,9 @@
 EXTENSION    = pgfincore
-EXTVERSION   = 1.3.1
-
 MODULES      = $(EXTENSION)
 MODULEDIR    = $(EXTENSION)
 DOCS         = README.md
-DATA         = $(EXTENSION)--1.2--1.3.1.sql \
-               $(EXTENSION)--$(EXTVERSION).sql
+DATA         = pgfincore--1.2.sql \
+               pgfincore--1.2--1.3.1.sql
 
 REGRESS      = $(EXTENSION)
 
@@ -15,6 +13,7 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 
 include $(PGXS)
 
+EXTVERSION   = 1.3.1
 dist:
 	git archive --prefix=$(EXTENSION)-$(EXTVERSION)/ -o ../$(EXTENSION)_$(EXTVERSION).orig.tar.gz HEAD
 
