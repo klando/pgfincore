@@ -1111,3 +1111,74 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	*r = '\0';
 	PG_RETURN_CSTRING(result);
 }
+
+/*
+ * sysconf and PostgreSQL informations
+ */
+PG_FUNCTION_INFO_V1(pg_page_size);
+PG_FUNCTION_INFO_V1(pg_segment_size);
+PG_FUNCTION_INFO_V1(vm_available_pages);
+PG_FUNCTION_INFO_V1(vm_page_size);
+PG_FUNCTION_INFO_V1(vm_physical_pages);
+
+/* PostgreSQL Page size */
+static inline size_t pg_PageSize()
+{
+        return BLCKSZ;
+}
+Datum
+pg_page_size(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(pg_PageSize());
+}
+
+/* PostgreSQL Segment size */
+static inline uint32 pg_SegmentSize()
+{
+	return RELSEG_SIZE;
+}
+Datum
+pg_segment_size(PG_FUNCTION_ARGS)
+{
+        PG_RETURN_UINT32(pg_SegmentSize());
+}
+
+/* System Page size */
+static size_t     _sc_pagesize    = 0;
+static inline size_t vm_PageSize()
+{
+	if (_sc_pagesize == 0)
+		_sc_pagesize = sysconf(_SC_PAGESIZE);
+	return ((size_t) _sc_pagesize);
+}
+Datum
+vm_page_size(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_PageSize());
+}
+
+/* System number of available pages */
+static inline size_t vm_AvPhysPages()
+{
+	return (size_t) sysconf(_SC_AVPHYS_PAGES);
+}
+Datum
+vm_available_pages(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_AvPhysPages());
+}
+
+/* System number of physical pages */
+static size_t 		_sc_phys_pages  = 0;
+static inline size_t vm_PhysPages()
+{
+	if (_sc_phys_pages == 0)
+		_sc_phys_pages = sysconf(_SC_PHYS_PAGES);
+	return _sc_phys_pages;
+}
+Datum
+vm_physical_pages(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_PhysPages());
+}
+

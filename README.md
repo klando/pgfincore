@@ -35,11 +35,15 @@ You can grab the latest code with git:
 
     git clone git://git.postgresql.org/git/pgfincore.git
     or
+    git://github.com/pgfincore/pgfincore.git
+    or
     git://github.com/klando/pgfincore.git
 
-And the project is on pgfoundry : http://pgfoundry.org/projects/pgfincore
-
 ## INSTALL
+
+* PgFincore is packaged for *RPM* at http://yum.postgresql.org/
+* PgFincore is packaged for *debian* at http://pgapt.debian.net/
+* PgFincore extension is available on some large SQL cloud providers.
 
 From source code:
 
@@ -48,27 +52,16 @@ From source code:
     su
     make install
 
-For PostgreSQL >= 9.1, log in your database and:
+Log in your database and:
 
     mydb=# CREATE EXTENSION pgfincore;
-
-For other release, create the functions from the sql script (it should be in
-your contrib directory):
-
-    psql mydb -f pgfincore.sql
 
 PgFincore is also shipped with Debian scripts to build your own package:
 
     aptitude install debhelper postgresql-server-dev-all postgresql-server-dev-9.1
-    # or postgresql-server-dev-8.4|postgresql-server-dev-9.0
+    # or postgresql-server-dev-8.4|postgresql-server-dev-9.0
     make deb
     dpkg -i ../postgresql-9.1-pgfincore_1.1.1-1_amd64.deb
-
-PgFincore is packaged for *RPM* at http://yum.postgresql.org/
-PgFincore is packaged for *debian* at http://pgapt.debian.net/
-
-
-
 
 ## EXAMPLES
 
@@ -217,6 +210,26 @@ Executing a snapshot and a restore is very simple:
               OUT group_dirty bigint)
       RETURNS setof record
 
+:: pg_page_size() RETURNS bigint
+
+    Returns PostgreSQL page size in bytes
+
+:: pg_segment_size() RETURNS int
+
+    Returns PostgreSQL segment size in blocks
+
+:: vm_available_pages() RETURNS bigint
+
+    Returns current number of available pages in system memory
+
+:: vm_page_size() RETURNS bigint
+
+    Returns system page size in bytes
+
+:: vm_physical_pages() RETURNS bigint
+
+    Returns total number of physical pages in system memory
+
 ## DOCUMENTATION
 
 ### pgsysconf
@@ -338,14 +351,12 @@ For example:
 
 ## REQUIREMENTS
 
- * PgFincore needs mincore() or fincore() and POSIX_FADVISE
+ * PgFincore requires sysconf(), mincore() or fincore(), and POSIX_FADVISE.
+ * PostgreSQL >= 9.3
 
 ## LIMITATIONS
 
  * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
-
- * PgFincore needs PostgreSQL >= 8.3
-
  * PgFincore does not work on windows.
 
 ## SEE ALSO

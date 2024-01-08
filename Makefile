@@ -1,11 +1,11 @@
 EXTENSION    = pgfincore
-EXTVERSION   = 1.3.1
+EXTVERSION   = 1.4.0
 
 MODULES      = $(EXTENSION)
 MODULEDIR    = $(EXTENSION)
 DOCS         = README.md
-DATA         = $(EXTENSION)--1.2--1.3.1.sql \
-               $(EXTENSION)--$(EXTVERSION).sql
+DATA         = $(EXTENSION)--1.3.1.sql \
+	       $(EXTENSION)--1.3.1--1.4.0.sql
 
 REGRESS      = $(EXTENSION)
 
