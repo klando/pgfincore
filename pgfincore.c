@@ -1108,6 +1108,12 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(result);
 }
 
+#include "miscadmin.h"			/* GetUserId() */
+#include "utils/acl.h"			/* AclResult */
+#include "utils/lsyscache.h"	/* get_rel_name */
+#include "utils/wait_event.h"	/* pgstat_report_wait_end */
+#include "storage/bufmgr.h"     /* RelationGetNumberOfBlocksInFork */
+
 /*
  * PG_RETURN_UINT64 appears in PostgreSQL 11
  * and UInt64GetDatum in 10 ...
@@ -1117,6 +1123,36 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 #define PG_RETURN_UINT64(x)  return UInt64GetDatum(x)
 #endif
 
+static char     *_mdfd_segpath(SMgrRelation reln, ForkNumber forkNum,
+                                                   BlockNumber segno);
+/*
+ * Return the filename for the specified segment of the relation. The
+ * returned string is palloc'd.
+ *
+ * IMPORTED from PostgreSQL source-code as-is
+ */
+static char *
+_mdfd_segpath(SMgrRelation reln, ForkNumber forkNum, BlockNumber segno)
+{
+	char	*path,
+			*fullpath;
+
+#if PG_VERSION_NUM < 160000
+	path = relpath(reln->smgr_rnode, forkNum);
+#else
+	path = relpath(reln->smgr_rlocator, forkNum);
+#endif
+	if (segno > 0)
+	{
+		fullpath = psprintf("%s.%u", path, segno);
+		pfree(path);
+	}
+	else
+		fullpath = path;
+
+	return fullpath;
+}
+
 /*
  * sysconf and PostgreSQL informations
  */
@@ -1125,6 +1161,78 @@ PG_FUNCTION_INFO_V1(pg_segment_size);
 PG_FUNCTION_INFO_V1(vm_available_pages);
 PG_FUNCTION_INFO_V1(vm_page_size);
 PG_FUNCTION_INFO_V1(vm_physical_pages);
+PG_FUNCTION_INFO_V1(vm_relation_cachestat);
+
+#define VM_RELATION_CACHESTAT_COLS	8
+/* cachestat syscall is linux only */
+#if defined(__linux__)
+#define MAY_HAVE_CACHESTAT
+#	ifndef __NR_cachestat
+#		if defined(__alpha__)
+#		define __NR_cachestat 561
+#		else
+#		define __NR_cachestat 451
+#		endif
+#	endif
+#endif
+
+typedef struct
+{
+	uint64  off;
+	uint64  len;
+} cachestat_range;
+
+typedef struct
+{
+	/* Number of cached pages */
+	uint64	nr_cache;
+	/* Number of dirty pages */
+	uint64	nr_dirty;
+	/* Number of pages marked for writeback. */
+	uint64	nr_writeback;
+	/* Number of pages evicted from the cache. */
+	uint64	nr_evicted;
+	/*
+	 * Number of recently evicted pages. A page is recently evicted if its
+	 * last eviction was recent enough that its reentry to the cache would
+	 * indicate that it is actively being used by the system, and that there
+	 * is memory pressure on the system.
+	 */
+	uint64	nr_recently_evicted;
+} cachestat;
+
+typedef struct
+{
+	int64	offset;
+	int64	length;
+	int64	range;
+	int		flags;
+#define OFFSET_IS_MAGIC	0x01
+#define LENGTH_IS_MAGIC	0x02
+} blockParams;
+
+typedef struct
+{
+	size_t	off;
+	size_t	len;
+	int		flags;
+} fileParams;
+
+typedef void *(FileSyscallFunction)(unsigned int, fileParams);
+
+static dlist_head *RelationSyscall(FileSyscallFunction *FileSyscall,
+								   Relation rel, ForkNumber forkNumber,
+								   blockParams *bp);
+
+static long SegmentSyscall(FileSyscallFunction *FileSyscall,
+						   dlist_head *statList, SMgrRelation reln,
+						   ForkNumber forkNum, BlockNumber segno,
+						   blockParams bp);
+
+static void *FileCachestat(unsigned int fd, fileParams fp);
+
+static long sys_cachestat(unsigned int fd, cachestat_range *cstat_range,
+						  void *stat, unsigned int flags);
 
 /* PostgreSQL Page size */
 static inline size_t pg_PageSize()
@@ -1187,3 +1295,493 @@ vm_physical_pages(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT64(vm_PhysPages());
 }
 
+/*
+ * Inline functions for Datum functions
+ */
+static inline Oid pgArgRelation(FunctionCallInfo fcinfo, int p)
+{
+	/* Basic sanity checking. */
+	if (PG_ARGISNULL(p))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation cannot be NULL"),
+				errhint("check parameters"));
+
+	return PG_GETARG_OID(p);
+}
+
+static inline text *pgArgForkName(FunctionCallInfo fcinfo, int p)
+{
+	if (PG_ARGISNULL(p))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("relation fork cannot be NULL"),
+				errhint("check parameters"));
+
+	return PG_GETARG_TEXT_PP(p);
+}
+
+static inline int64 pgArgBlockOffset(FunctionCallInfo fcinfo, int p)
+{
+	int64 offset;
+	if (PG_ARGISNULL(p))
+		offset = -1;
+	else
+	{
+		offset = PG_GETARG_INT64(p);
+		if (offset < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("starting block number cannot be negative"),
+					errhint("check parameters"));
+	}
+	return offset;
+}
+
+static inline int64 pgArgBlockLength(FunctionCallInfo fcinfo, int p)
+{
+	int64 length;
+	if (PG_ARGISNULL(p))
+		length = 0;
+	else
+	{
+		length = PG_GETARG_INT64(p);
+		if (length < 0)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("number of blocks cannot be negative"),
+					errhint("check parameters"));
+	}
+	return length;
+}
+
+static inline int64 pgArgBlockRange(FunctionCallInfo fcinfo, int p)
+{
+	int64 range;
+	if (PG_ARGISNULL(p))
+		range = pg_SegmentSize();
+	else
+	{
+		range = PG_GETARG_INT64(p);
+		if (range <= 0)
+				ereport(ERROR,
+						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("block range cannot be negative or 0"),
+						errhint("check parameters"));
+	}
+	return range;
+}
+
+static inline void checkAcl(Oid relOid, Relation rel)
+{
+	AclResult	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
+					   get_rel_name(relOid));
+}
+
+static inline void checkForkExists(Oid relOid, Relation rel, text *forkName)
+{
+	/* Check that the fork exists. */
+	if (!smgrexists(RelationGetSmgr(rel),
+					forkname_to_number(text_to_cstring(forkName))))
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("fork \"%s\" does not exist for the relation \"%s\"",
+					   text_to_cstring(forkName), get_rel_name(relOid)),
+				errhint("check parameters"));
+}
+
+typedef struct
+{
+	BlockNumber	offset;
+	BlockNumber	range;
+	void		*stat;
+	dlist_node	node;
+} statTuple;
+
+/*
+ * Implement linux 6.5 cachestat
+ * vm_relation_cachestat returns number of pages as viewed by the system.
+ * math must be done to get the sizing in postgresql pages instead.
+ */
+Datum
+vm_relation_cachestat(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+
+	Oid				relOid;
+	text			*forkName;
+	Relation		rel;
+	blockParams		*relBlockParams	= palloc(sizeof(blockParams));
+	dlist_head		*statList	= (dlist_head *) palloc(sizeof(dlist_head));
+	dlist_iter		iter;
+
+	/* Basic sanity checking. */
+	relOid					= pgArgRelation(fcinfo, 0);
+	forkName				= pgArgForkName(fcinfo, 1);
+	/*
+	 * Validate block numbers, handle nulls.
+	 * Correct values will be checked later.
+	 */
+	relBlockParams->offset	= pgArgBlockOffset(fcinfo, 2);
+	relBlockParams->length	= pgArgBlockLength(fcinfo, 3);
+	relBlockParams->range	= pgArgBlockRange(fcinfo, 4);
+
+	InitMaterializedSRF(fcinfo, 0);
+
+	/* Open relation and check privileges. */
+	rel						= relation_open(relOid, AccessShareLock);
+	checkAcl(relOid, rel);
+	checkForkExists(relOid, rel, forkName);
+
+	/* Get the stats */
+	statList = RelationSyscall(FileCachestat, rel,
+							   forkname_to_number(text_to_cstring(forkName)),
+							   relBlockParams);
+	pfree(forkName);
+	pfree(relBlockParams);
+
+	/* Close relation, release lock. */
+	relation_close(rel, AccessShareLock);
+
+	dlist_reverse_foreach(iter, statList)
+	{
+		Datum		values[VM_RELATION_CACHESTAT_COLS];
+		bool		nulls[VM_RELATION_CACHESTAT_COLS] = {0};
+		int			col = 0;
+		statTuple	*tuple = dlist_container(statTuple, node, iter.cur);
+		cachestat	*cstat = (cachestat *) tuple->stat;
+
+		/* blockOff */
+		values[col++] = Int64GetDatum(tuple->offset);
+		/* blockLen */
+		values[col++] = Int64GetDatum(tuple->range);
+		/* total number of pages examinated */
+		values[col++] = Int64GetDatum(tuple->range * BLCKSZ / vm_PageSize());
+		/* Number of cached pages */
+		values[col++] = Int64GetDatum(cstat->nr_cache);
+		/* Number of dirty pages */
+		values[col++] = Int64GetDatum(cstat->nr_dirty);
+		/* Number of pages marked for writeback. */
+		values[col++] = Int64GetDatum(cstat->nr_writeback);
+		/* Number of pages evicted from the cache. */
+		values[col++] = Int64GetDatum(cstat->nr_evicted);
+		/*
+		* Number of recently evicted pages. A page is recently evicted if its
+		* last eviction was recent enough that its reentry to the cache would
+		* indicate that it is actively being used by the system, and that there
+		* is memory pressure on the system.
+		*/
+		values[col++] = Int64GetDatum(cstat->nr_recently_evicted);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+		pfree(cstat);
+		pfree(tuple);
+	}
+	pfree(statList);
+	return (Datum) 0;
+}
+
+/*
+ * Inline functions for Relation* functions
+ */
+static inline BlockNumber GetSegnoOfBlock(BlockNumber blockNum)
+{
+	return blockNum / RELSEG_SIZE;
+}
+
+static inline BlockNumber GetSeekEndOrSeekNBlocks(BlockNumber blockNum, BlockNumber nblocks)
+{
+	if (GetSegnoOfBlock(blockNum) != GetSegnoOfBlock(blockNum + nblocks - 1))
+		nblocks = RELSEG_SIZE - (blockNum % ((BlockNumber) RELSEG_SIZE));
+
+	return nblocks;
+}
+
+static inline void setBlockParamsOK(int64 relblocks, blockParams *bp)
+{
+	bp->flags = 0;
+	/* full relation ? */
+	if (bp->offset < 0)
+	{
+		bp->flags	|= OFFSET_IS_MAGIC;
+		bp->offset	= 0;
+		bp->length	= relblocks;
+	}
+	/* start too far ? */
+	if (bp->offset > relblocks)
+	{
+		ereport(WARNING,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("start block %lu is greater than number of blocks in relation (%lu)",
+					   bp->offset, relblocks),
+				errhint("setting start block to %lu", relblocks -1));
+		bp->offset = relblocks - 1;
+	}
+	/* only up to the end of segment maching bp.offset ? */
+	if (bp->length <= 0)
+	{
+		bp->flags	|= LENGTH_IS_MAGIC;
+		/*
+		 * if offset and relblocks are not the same segment then we go from
+		 * offset to end of a full segment, otherwise stop earlier.
+		 */
+		if ((bp->offset / RELSEG_SIZE) == (relblocks / RELSEG_SIZE))
+			bp->length = relblocks - bp->offset;
+		else
+			bp->length = RELSEG_SIZE - (bp->offset % ((BlockNumber) RELSEG_SIZE));
+	}
+	/* end too far ? */
+	if (bp->offset + bp->length > relblocks + 1)
+	{
+		ereport(WARNING,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("number of blocks (%lu) will go after end of relation (%lu)",
+					   bp->length, relblocks),
+				errhint("setting number of blocks to %lu",
+						relblocks - bp->offset));
+		bp->length = relblocks - bp->offset;
+	}
+}
+
+/*
+ * RelationSyscall executes a syscall on all or part of a relation.
+ * The function takes care of each relevant segment.
+ *
+ * In order to get a call of the full relation:
+ * pass blockNum=InvalidBlockNumber
+ * (in this case length is ignored)
+ * And in order to execute from blockNun to the end of 'its' segment:
+ * pass length=InvalidBlockNumber or 0
+ * It is a bit annoying from user point of view as offset is used to find the
+ * relevant segment: calling on all "segment 2" requires the user to pass
+ * the offset matching with the first page of the "segment 2":
+ *  - segment N start block = (N * RELSEG_SIZE)
+ *  - with default build it is: segment N start block is N * 131072
+ *  - segment 0 start block is 131072 * 0
+ *  - segment 1 start block is 131072 * 1
+ *  - segment 2 start block is 131072 * 2 ...
+ *
+ * An alternative solution is to use SegmentCachestat() which works on a single
+ * segment.
+ */
+static dlist_head *
+RelationSyscall(FileSyscallFunction FileSyscall, Relation rel,
+				ForkNumber forkNum, blockParams *relbp)
+{
+	blockParams		bp;
+	dlist_head		*statList = (dlist_head *) palloc(sizeof(dlist_head));
+	SMgrRelation	reln = RelationGetSmgr(rel);
+	/*
+	 * we need the relblocks to loop over the segments
+	 * this is convenient to use "range" lookup
+	 * an alternative solution consists in looping
+	 * until OpenTransientFile() returns false...
+	 */
+	BlockNumber		relblocks = RelationGetNumberOfBlocksInFork(rel, forkNum);
+
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+	/*
+	 * now check and adjust values if needed
+	 * (can't go over end of file, start after end, etc.)
+	 * blockParams will be updated to safe values matching the *request*.
+	 * this is distinct from blockParams which is really pass down to
+	 * SegmentSyscall
+	 */
+	setBlockParamsOK(relblocks, relbp);
+
+	bp.flags	= relbp->flags;
+	bp.range	= relbp->range;
+
+	dlist_init(statList);
+
+	/*
+	 * Issue as few requests as possible; have to split at segment boundaries
+	 * though, since those are actually separate files.
+	 */
+	while (relbp->length > 0)
+	{
+		long		rc;
+		BlockNumber	segment = GetSegnoOfBlock(relbp->offset);
+
+		bp.length	= GetSeekEndOrSeekNBlocks(relbp->offset, relbp->length);
+		bp.offset	= relbp->offset % pg_SegmentSize();
+
+		CHECK_FOR_INTERRUPTS();
+		rc = SegmentSyscall(FileSyscall, statList, reln, forkNum, segment, bp);
+		/* ERROR out if any error */
+		if (rc)
+			ereport(ERROR,
+					errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("SegmentSyscall returns: %m"));
+
+		relbp->length	-= bp.length;
+		relbp->offset	+= bp.length;
+	}
+	return statList;
+}
+
+/*
+ * Inline functions for SegmentSyscall
+ */
+static inline int getFileDescriptor(SMgrRelation reln, BlockNumber forkNum,
+									BlockNumber segno)
+{
+	char	*fullpath = _mdfd_segpath(reln, forkNum, segno);
+	int		fd = OpenTransientFile(fullpath, O_RDONLY | PG_BINARY);
+	pfree(fullpath);
+	if (fd < 0)
+	{
+		if (errno != ENOENT)
+			ereport(ERROR,
+					errcode_for_file_access(),
+					errmsg("could not read segment %u", segno));
+	}
+	return fd;
+}
+
+static inline void closeFileDescriptor(int fd, BlockNumber segno)
+{
+	if (CloseTransientFile(fd) != 0)
+		ereport(WARNING,
+				errcode_for_file_access(),
+				errmsg("could not close segment %u", segno));
+}
+
+/*
+ * SegmentSyscall calls the syscall on a relation's segment. Caller is
+ * responsible for checking input values (offset/length) as they should match
+ * segment range.
+ *
+ * Pay attention, blockOff is the starting block in the current segment, not
+ * in the "relation".
+ *
+ * if flags & LENGTH_IS_MAGIC and length <= range
+ * then we pass len=0 to the syscall
+ */
+static long
+SegmentSyscall(FileSyscallFunction FileSyscall, dlist_head *statList,
+			   SMgrRelation reln, ForkNumber forkNum, BlockNumber segno,
+			   blockParams bp)
+{
+	int			fd;
+	long		rc = 0;
+	int			nbytes		= BLCKSZ * bp.length;
+	fileParams	fp;
+	fp.flags = bp.flags;
+
+	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
+
+	pgstat_report_wait_start(PG_WAIT_EXTENSION);
+	fd = getFileDescriptor(reln, forkNum, segno);
+
+	/*
+	 * here is the most convenient place to loop on smaller calls to collect
+	 * details because we have the file open already.
+	 * len and range are in bytes.
+	 */
+	fp.off		= BLCKSZ * bp.offset;
+	fp.len		= BLCKSZ * bp.range;
+	while (nbytes > (BLCKSZ * bp.range))
+	{
+		void		*stat;
+		statTuple	*stuple = (statTuple *) palloc0(sizeof(statTuple));
+
+#ifdef DEBUG
+		elog(DEBUG1, "segno: %d offset: %lu length: %lu", segno, fp.off, fp.len);
+#endif
+		stat = FileSyscall(fd, fp);
+
+		/*
+		 * add block offset and len to the stuple
+		 * it's always BLCKSZ aligned.
+		 */
+		stuple->offset	= (segno * pg_SegmentSize()) + (fp.off / BLCKSZ);
+		stuple->range	= bp.range;
+		stuple->stat	= stat;
+
+		dlist_push_head(statList, &stuple->node);
+
+		nbytes	-= BLCKSZ * bp.range;
+		fp.off	+= BLCKSZ * bp.range;
+	}
+	/*
+	 * tail loop for remaining blocks OR for special "full file"
+	 */
+	if (nbytes > 0)
+	{
+		void		*stat;
+		statTuple	*stuple = (statTuple *) palloc0(sizeof(statTuple));
+
+		if (fp.flags & LENGTH_IS_MAGIC)
+			fp.len = 0;
+		else
+			fp.len = nbytes;
+#ifdef DEBUG
+		elog(DEBUG1, "segno: %d offset: %lu length: %lu", segno, fp.off, fp.len);
+#endif
+		stat = FileSyscall(fd, fp);
+
+		/*
+		 * add block offset and len to the stuple
+		 * it's always BLCKSZ aligned.
+		 */
+		stuple->offset	= (segno * pg_SegmentSize()) + (fp.off / BLCKSZ);
+		stuple->range	= nbytes / BLCKSZ;
+		stuple->stat	= stat;
+
+		dlist_push_head(statList, &stuple->node);
+	}
+	closeFileDescriptor(fd, segno);
+	pgstat_report_wait_end();
+	return rc;
+}
+
+/*
+ * FileCachestat collects kernel cache stats of all or a portion of a file.
+ */
+static void *
+FileCachestat(unsigned int fd, fileParams fp)
+{
+	cachestat		*cstat;
+#if defined(MAY_HAVE_CACHESTAT)
+	long			rc;
+	cachestat_range	cstat_range = {(uint64) fp.off, (uint64) fp.len};
+	cstat = (cachestat *) palloc0(sizeof(cachestat));
+
+	rc = sys_cachestat(fd, &cstat_range, cstat, 0);
+	if (rc == -1)
+	{
+		if (errno == ENOSYS)
+			ereport(ERROR,
+					errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("sys_cachestat is not available: %m"),
+					errhint("linux 6.5 minimum is required!"));
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("sys_cachestat returns: %m"));
+	}
+#else
+	ereport(WARNING,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cachestat is supported only on linux"),
+					errhint("see functions based on mincore instead on others UNIX-like systems"));
+#endif  /* MAY_HAVE_CACHESTAT */
+
+	return cstat;
+}
+
+/*
+ * Implement linux 6.5 sys_cachestat
+ *
+ * `off` and `len` must be non-negative integers. If `len` > 0,
+ * the queried range is [`off`, `off` + `len`]. If `len` == 0,
+ * we will query in the range from `off` to the end of the file.
+ * flags (the last param) is unused and must be 0, it's distinct from fp.flags!
+ */
+static long
+sys_cachestat(unsigned int fd, cachestat_range *cstat_range, void *stat,
+			  unsigned int flags)
+{
+	return syscall(__NR_cachestat, fd, cstat_range, (cachestat *) stat, flags);
+}

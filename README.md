@@ -380,6 +380,53 @@ SELECT vm_physical_pages();
 (1 row)
 ```
 
+### vm_relation_cachestat
+
+Parameters:
+
+1. `relation regclass`
+2. `fork_name text default 'main'`
+3. `"offset" bigint default null` - define as NULL to inspect the full relation
+4. `"length" bigint default null` - define as 0 or NULL to inspect only the segment of the offset up to its end.
+5. `"range" bigint default null` - details grouped by this number of blocks
+
+Returns linux cachestat information:
+
+- block_start is the starting block number for the current tuple
+- block_count is the number of blocks analyzed for the current tuple
+- nr_cache is Number of cached pages
+- nr_dirty is Number of dirty pages
+- nr_writeback is Number of pages marked for writeback
+- nr_evicted is Number of pages evicted from the cache
+- nr_recently_evicted is Number of pages recently evicted from the cache
+> A page is recently evicted if its last eviction was recent enough that its
+> reentry to the cache would indicate that it is actively being used by the
+> system, and that there is memory pressure on the system.
+
+Get results of linux 6.5 cachestat syscall, one row per segment by default:
+
+```{.sqlpostgresql}
+select * from vm_relation_cachestat('foo');
+ block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
+-------------+-------------+----------+----------+----------+--------------+------------+---------------------
+           0 |      131072 |   262144 |      192 |        0 |            0 |      13888 |               13888
+      131072 |        1672 |     3344 |        0 |        0 |            0 |          0 |                   0
+```
+
+Also possible get more details with `range` parameter, here for 1024 PostgreSQL
+blocks by 32 (256MB by defaul)t:
+
+```{.sqlpostgresql}
+select * from vm_relation_cachestat('foo', range:=1024*32);
+ block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
+-------------+-------------+----------+----------+----------+--------------+------------+---------------------
+           0 |       32768 |    65536 |        0 |        0 |            0 |          0 |                   0
+       32768 |       32768 |    65536 |        0 |        0 |            0 |       4992 |                4992
+       65536 |       32768 |    65536 |      192 |        0 |            0 |       6784 |                6784
+       98304 |       32768 |    65536 |        0 |        0 |            0 |       2112 |                2112
+      131072 |        1672 |     3344 |        0 |        0 |            0 |          0 |                   0
+```
+
 ## DEBUG
 
 You can debug the PgFincore with the following error level: *DEBUG1* and

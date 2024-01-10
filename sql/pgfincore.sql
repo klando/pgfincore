@@ -52,6 +52,8 @@ select from pgfadvise_normal('test');
 --
 select NULL || pgfincore_drawer(databit) from pgfincore('test','main',true);
 
+DROP TABLE test;
+
 --
 -- System/PostgreSQL info
 --
@@ -64,4 +66,31 @@ SELECT vm_page_size();
 -- no output for the following:
 SELECT FROM vm_physical_pages();
 SELECT FROM vm_available_pages();
+
+-- our test table
+CREATE TABLE test AS SELECT generate_series(1,256) as a;
+
+--
+-- tests vm_relation_cachestat
+--
+-- Test errors
+select * from vm_relation_cachestat(NULL);
+select * from vm_relation_cachestat('badtable');
+select * from vm_relation_cachestat('test', NULL);
+select * from vm_relation_cachestat('test', 'vm');
+select * from vm_relation_cachestat('test', 'main', -1);
+select * from vm_relation_cachestat('test', 'main', NULL, -1);
+select * from vm_relation_cachestat('test', 'main', NULL, NULL, -1);
+select * from vm_relation_cachestat('test', 'main', NULL, NULL, 0);
+-- Test warnings
+select * from vm_relation_cachestat('test', 'main', 10);
+select * from vm_relation_cachestat('test', 'main', 0, 10);
+-- Working cases
+select * from vm_relation_cachestat('test', 'main', 0, 2, 1);
+select * from vm_relation_cachestat('test', 'main', 0, 2, 2);
+select * from vm_relation_cachestat('test', 'main', 1, 2, 3);
+select * from vm_relation_cachestat('test', 'main', 0);
+select * from vm_relation_cachestat('test', 'main', 1);
+select * from vm_relation_cachestat('test', 'main');
+select * from vm_relation_cachestat('test');
 

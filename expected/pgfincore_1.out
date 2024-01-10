@@ -161,60 +161,32 @@ HINT:  check parameters
 select * from vm_relation_cachestat('test', 'main', 10);
 WARNING:  start block 10 is greater than number of blocks in relation (2)
 HINT:  setting start block to 1
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           1 |           1 |        2 |        2 |        2 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main', 0, 10);
 WARNING:  number of blocks (10) will go after end of relation (2)
 HINT:  setting number of blocks to 2
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           2 |        4 |        4 |        4 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 -- Working cases
 select * from vm_relation_cachestat('test', 'main', 0, 2, 1);
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           1 |        2 |        2 |        2 |            0 |          0 |                   0
-           1 |           1 |        2 |        2 |        2 |            0 |          0 |                   0
-(2 rows)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main', 0, 2, 2);
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           2 |        4 |        4 |        4 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main', 1, 2, 3);
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           1 |           2 |        4 |        2 |        2 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main', 0);
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           2 |        4 |        4 |        4 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main', 1);
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           1 |           1 |        2 |        2 |        2 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test', 'main');
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           2 |        4 |        4 |        4 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
 select * from vm_relation_cachestat('test');
- block_start | block_count | nr_pages | nr_cache | nr_dirty | nr_writeback | nr_evicted | nr_recently_evicted 
--------------+-------------+----------+----------+----------+--------------+------------+---------------------
-           0 |           2 |        4 |        4 |        4 |            0 |          0 |                   0
-(1 row)
-
+ERROR:  sys_cachestat is not available: Function not implemented
+HINT:  linux 6.5 minimum is required!
