@@ -5,6 +5,7 @@ DOCS         = README.md
 DATA         = pgfincore--1.2.sql \
                pgfincore--1.2--1.3.1.sql \
                pgfincore--1.3.1--1.4.0.sql
+HEADERS_$(EXTENSION) = $(EXTENSION).h
 
 REGRESS      = $(EXTENSION)
 
