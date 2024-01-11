@@ -1111,7 +1111,9 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 #include "miscadmin.h"			/* GetUserId() */
 #include "utils/acl.h"			/* AclResult */
 #include "utils/lsyscache.h"	/* get_rel_name */
+#if PG_VERSION_NUM >= 150000
 #include "utils/wait_event.h"	/* pgstat_report_wait_end */
+#endif
 #include "storage/bufmgr.h"     /* RelationGetNumberOfBlocksInFork */
 
 #include "pgfincore.h"
@@ -1507,7 +1509,7 @@ SegmentSyscall(FileSyscallFunction FileSyscall, dlist_head *statList,
 
 	Assert((io_direct_flags & IO_DIRECT_DATA) == 0);
 
-	pgstat_report_wait_start(PG_WAIT_EXTENSION);
+	pgstat_report_wait_start(PG_WAIT_IO);
 	fd = getFileDescriptor(reln, forkNum, segno);
 
 	/*
