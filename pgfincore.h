@@ -130,9 +130,9 @@ static inline Oid pgArgRelation(FunctionCallInfo fcinfo, int p)
 	/* Basic sanity checking. */
 	if (PG_ARGISNULL(p))
 		ereport(ERROR,
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("relation cannot be NULL"),
-				errhint("check parameters"));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("relation cannot be NULL"),
+				 errhint("check parameters")));
 
 	return PG_GETARG_OID(p);
 }
@@ -141,9 +141,9 @@ static inline text *pgArgForkName(FunctionCallInfo fcinfo, int p)
 {
 	if (PG_ARGISNULL(p))
 		ereport(ERROR,
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("relation fork cannot be NULL"),
-				errhint("check parameters"));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("relation fork cannot be NULL"),
+				 errhint("check parameters")));
 
 	return PG_GETARG_TEXT_PP(p);
 }
@@ -158,9 +158,9 @@ static inline int64 pgArgBlockOffset(FunctionCallInfo fcinfo, int p)
 		offset = PG_GETARG_INT64(p);
 		if (offset < 0)
 			ereport(ERROR,
-					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("starting block number cannot be negative"),
-					errhint("check parameters"));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("starting block number cannot be negative"),
+					 errhint("check parameters")));
 	}
 	return offset;
 }
@@ -175,9 +175,9 @@ static inline int64 pgArgBlockLength(FunctionCallInfo fcinfo, int p)
 		length = PG_GETARG_INT64(p);
 		if (length < 0)
 			ereport(ERROR,
-					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("number of blocks cannot be negative"),
-					errhint("check parameters"));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("number of blocks cannot be negative"),
+					 errhint("check parameters")));
 	}
 	return length;
 }
@@ -192,9 +192,9 @@ static inline int64 pgArgBlockRange(FunctionCallInfo fcinfo, int p)
 		range = PG_GETARG_INT64(p);
 		if (range <= 0)
 				ereport(ERROR,
-						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("block range cannot be negative or 0"),
-						errhint("check parameters"));
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("block range cannot be negative or 0"),
+						 errhint("check parameters")));
 	}
 	return range;
 }
@@ -213,10 +213,10 @@ static inline void checkForkExists(Oid relOid, Relation rel, text *forkName)
 	if (!smgrexists(RelationGetSmgr(rel),
 					forkname_to_number(text_to_cstring(forkName))))
 		ereport(ERROR,
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("fork \"%s\" does not exist for the relation \"%s\"",
-					   text_to_cstring(forkName), get_rel_name(relOid)),
-				errhint("check parameters"));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("fork \"%s\" does not exist for the relation \"%s\"",
+						text_to_cstring(forkName), get_rel_name(relOid)),
+				 errhint("check parameters")));
 }
 
 /*
@@ -232,8 +232,8 @@ static inline int getFileDescriptor(SMgrRelation reln, BlockNumber forkNum,
 	{
 		if (errno != ENOENT)
 			ereport(ERROR,
-					errcode_for_file_access(),
-					errmsg("could not read segment %u", segno));
+					(errcode_for_file_access(),
+					 errmsg("could not read segment %u", segno)));
 	}
 	return fd;
 }
@@ -242,7 +242,7 @@ static inline void closeFileDescriptor(int fd, BlockNumber segno)
 {
 	if (CloseTransientFile(fd) != 0)
 		ereport(WARNING,
-				errcode_for_file_access(),
-				errmsg("could not close segment %u", segno));
+				(errcode_for_file_access(),
+				 errmsg("could not close segment %u", segno)));
 }
 #endif

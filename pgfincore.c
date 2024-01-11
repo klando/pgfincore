@@ -1376,10 +1376,10 @@ static inline void setBlockParamsOK(int64 relblocks, blockParams *bp)
 	if (bp->offset > relblocks)
 	{
 		ereport(WARNING,
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("start block %lu is greater than number of blocks in relation (%lu)",
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("start block %lu is greater than number of blocks in relation (%lu)",
 					   bp->offset, relblocks),
-				errhint("setting start block to %lu", relblocks -1));
+				 errhint("setting start block to %lu", relblocks -1)));
 		bp->offset = relblocks - 1;
 	}
 	/* only up to the end of segment maching bp.offset ? */
@@ -1399,11 +1399,11 @@ static inline void setBlockParamsOK(int64 relblocks, blockParams *bp)
 	if (bp->offset + bp->length > relblocks + 1)
 	{
 		ereport(WARNING,
-				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("number of blocks (%lu) will go after end of relation (%lu)",
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("number of blocks (%lu) will go after end of relation (%lu)",
 					   bp->length, relblocks),
 				errhint("setting number of blocks to %lu",
-						relblocks - bp->offset));
+						relblocks - bp->offset)));
 		bp->length = relblocks - bp->offset;
 	}
 }
@@ -1476,8 +1476,8 @@ RelationSyscall(FileSyscallFunction FileSyscall, Relation rel,
 		/* ERROR out if any error */
 		if (rc)
 			ereport(ERROR,
-					errcode(ERRCODE_INTERNAL_ERROR),
-					errmsg("SegmentSyscall returns: %m"));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("SegmentSyscall returns: %m")));
 
 		relbp->length	-= bp.length;
 		relbp->offset	+= bp.length;
@@ -1591,12 +1591,12 @@ FileCachestat(unsigned int fd, fileParams fp)
 	{
 		if (errno == ENOSYS)
 			ereport(ERROR,
-					errcode(ERRCODE_INTERNAL_ERROR),
-					errmsg("sys_cachestat is not available: %m"),
-					errhint("linux 6.5 minimum is required!"));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("sys_cachestat is not available: %m"),
+					 errhint("linux 6.5 minimum is required!")));
 		ereport(ERROR,
-				errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("sys_cachestat returns: %m"));
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("sys_cachestat returns: %m")));
 	}
 #else
 	ereport(WARNING,
