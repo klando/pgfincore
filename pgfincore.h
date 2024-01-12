@@ -2,12 +2,59 @@
 #define PGFINCORE_H
 
 #if PG_VERSION_NUM < 110000
+#include "storage/smgr.h"
 /*
  * PG_RETURN_UINT64 appears in PostgreSQL 11
  * and UInt64GetDatum in 10 ...
  * it results in dropping pgfincore support for 9.4-9.6
  */
 #define PG_RETURN_UINT64(x)  return UInt64GetDatum(x)
+
+/*
+ * get_relkind_objtype
+ *
+ * Return the object type for the relkind given by the caller.
+ *
+ * If an unexpected relkind is passed, we say OBJECT_TABLE rather than
+ * failing.  That's because this is mostly used for generating error messages
+ * for failed ACL checks on relations, and we'd rather produce a generic
+ * message saying "table" than fail entirely.
+ */
+static ObjectType get_relkind_objtype(char relkind);
+ObjectType
+get_relkind_objtype(char relkind)
+{
+	switch (relkind)
+	{
+		case RELKIND_RELATION:
+		case RELKIND_PARTITIONED_TABLE:
+			return OBJECT_TABLE;
+		case RELKIND_INDEX:
+			return OBJECT_INDEX;
+		case RELKIND_SEQUENCE:
+			return OBJECT_SEQUENCE;
+		case RELKIND_VIEW:
+			return OBJECT_VIEW;
+		case RELKIND_MATVIEW:
+			return OBJECT_MATVIEW;
+		case RELKIND_FOREIGN_TABLE:
+			return OBJECT_FOREIGN_TABLE;
+		case RELKIND_TOASTVALUE:
+			return OBJECT_TABLE;
+		default:
+			/* Per above, don't raise an error */
+			return OBJECT_TABLE;
+	}
+}
+
+#endif
+
+#if PG_VERSION_NUM < 110000
+static inline SMgrRelationData *RelationGetSmgr(Relation rel)
+{
+	RelationOpenSmgr(rel);
+	return rel->rd_smgr;
+}
 #endif
 
 #if PG_VERSION_NUM < 150000
@@ -220,13 +267,17 @@ static inline void checkForkExists(Oid relOid, Relation rel, text *forkName)
 }
 
 /*
- * Inline functions for file descriptors
+ * Inline functions for file descriptors (no file creation!)
  */
 static inline int getFileDescriptor(SMgrRelation reln, BlockNumber forkNum,
 									BlockNumber segno)
 {
 	char	*fullpath = _mdfd_segpath(reln, forkNum, segno);
+#if PG_VERSION_NUM < 110000
+	int		fd = OpenTransientFile(fullpath, O_RDONLY | PG_BINARY, 0);
+#else
 	int		fd = OpenTransientFile(fullpath, O_RDONLY | PG_BINARY);
+#endif
 	pfree(fullpath);
 	if (fd < 0)
 	{
