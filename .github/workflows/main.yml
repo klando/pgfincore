@@ -9,6 +9,7 @@ jobs:
     strategy:
       matrix:
         pg:
+          - 17
           - 16
           - 15
           - 14
