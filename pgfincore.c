@@ -146,9 +146,12 @@ Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
 #if PG_MAJOR_VERSION < 1600
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#else
+#elif PG_MAJOR_VERSION < 1800
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
+#else
+#define relpathpg(rel, forkName) \
+        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str
 #endif
 
 /*
