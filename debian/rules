@@ -1,7 +1,0 @@
-#!/usr/bin/make -f
-
-override_dh_installdocs:
-	dh_installdocs --all README.*
-
-%:
-	dh $@ --with pgxs
