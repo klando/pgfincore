@@ -62,6 +62,14 @@ PG_MODULE_MAGIC;
 #else
 #define FINCORE_BITS    2
 #endif
+
+#if PG_MAJOR_VERSION < 1800
+typedef char* RelPathStr;
+#define relpath_cstr(x) x
+#else
+#define relpath_cstr(x) x.str
+#endif
+
 /*
  * pgfadvise_fctx structure is needed
  * to keep track of relation path, segment number, ...
@@ -72,7 +80,7 @@ typedef struct
 	TupleDesc		tupd;			/* the tuple descriptor */
 	Relation		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
-	char 			*relationpath;	/* the relation path */
+	RelPathStr		relationpath;	/* the relation path */
 } pgfadvise_fctx;
 
 /*
@@ -108,7 +116,7 @@ typedef struct
 	TupleDesc		tupd;			/* the tuple descriptor */
 	Relation 		rel;			/* the relation */
 	unsigned int	segcount;		/* the segment current number */
-	char			*relationpath;	/* the relation path */
+	RelPathStr		relationpath;
 } pgfincore_fctx;
 
 /*
@@ -146,12 +154,9 @@ Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
 #if PG_MAJOR_VERSION < 1600
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#elif PG_MAJOR_VERSION < 1800
-#define relpathpg(rel, forkName) \
-        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #else
 #define relpathpg(rel, forkName) \
-        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str
+        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #endif
 
 /*
@@ -373,7 +378,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 
 		/* And finally we keep track of our initialization */
 		elog(DEBUG1, "pgfadvise: init done for %s, in fork %s",
-						fctx->relationpath, text_to_cstring(forkName));
+						relpath_cstr(fctx->relationpath), text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -390,12 +395,12 @@ pgfadvise(PG_FUNCTION_ARGS)
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s",
-		         fctx->relationpath);
+		         relpath_cstr(fctx->relationpath));
 	else
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s.%u",
-		         fctx->relationpath,
+		         relpath_cstr(fctx->relationpath),
 		         fctx->segcount);
 
 	elog(DEBUG1, "pgfadvise: about to work with %s, current advice : %d",
@@ -414,7 +419,7 @@ pgfadvise(PG_FUNCTION_ARGS)
 	*/
 	if (result)
 	{
-		elog(DEBUG1, "pgfadvise: closing %s", fctx->relationpath);
+		elog(DEBUG1, "pgfadvise: closing %s", relpath_cstr(fctx->relationpath));
 		relation_close(fctx->rel, AccessShareLock);
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
@@ -607,7 +612,7 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 	pgfloaderStruct	*pgfloader;
 
 	Relation  rel;
-	char      *relationpath;
+	RelPathStr relationpath;
 	char      filename[MAXPGPATH];
 
 	/* our return value, 0 for success */
@@ -647,12 +652,12 @@ pgfadvise_loader(PG_FUNCTION_ARGS)
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s",
-		         relationpath);
+		         relpath_cstr(relationpath));
 	else
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s.%u",
-		         relationpath,
+		         relpath_cstr(relationpath),
 		         (int) segmentNumber);
 
 	/*
@@ -953,7 +958,7 @@ pgfincore(PG_FUNCTION_ARGS)
 
 		/* And finally we keep track of our initialization */
 		elog(DEBUG1, "pgfincore: init done for %s, in fork %s",
-					fctx->relationpath, text_to_cstring(forkName));
+					relpath_cstr(fctx->relationpath), text_to_cstring(forkName));
 		funcctx->user_fctx = fctx;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -970,12 +975,12 @@ pgfincore(PG_FUNCTION_ARGS)
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s",
-		         fctx->relationpath);
+		         relpath_cstr(fctx->relationpath));
 	else
 		snprintf(filename,
 		         MAXPGPATH,
 		         "%s.%u",
-		         fctx->relationpath,
+		         relpath_cstr(fctx->relationpath),
 		         fctx->segcount);
 
 	elog(DEBUG1, "pgfincore: about to work with %s", filename);
@@ -992,7 +997,7 @@ pgfincore(PG_FUNCTION_ARGS)
 	*/
 	if (result)
 	{
-		elog(DEBUG1, "pgfincore: closing %s", fctx->relationpath);
+		elog(DEBUG1, "pgfincore: closing %s", relpath_cstr(fctx->relationpath));
 		relation_close(fctx->rel, AccessShareLock);
 		pfree(fctx);
 		SRF_RETURN_DONE(funcctx);
