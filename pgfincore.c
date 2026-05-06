@@ -151,7 +151,7 @@ Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
         relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #else
 #define relpathpg(rel, forkName) \
-        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str
+        pstrdup(relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str)
 #endif
 
 /*
