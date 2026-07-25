@@ -1,3 +1,11 @@
+2026-07-25 Cédric Villemain <cedric.villemain@data-bene.io>
+  *  . .  - Drop support for PostgreSQL 10
+          - Add function pg_page_size()
+          - Add function pg_segment_size()
+          - Add function vm_available_pages()
+          - Add function vm_page_size()
+          - Add function vm_physical_pages()
+
 2026-06-17 Christoph Berg <myon@debian.org>
   * 1.4.0 - support PostgreSQL 18 and 19 (Bradford D. Boyle, Devrim Gunduz)
           - Fix off-by-one access at the end of the vec array (Robert Pang)
