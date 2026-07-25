@@ -4,6 +4,8 @@ on:
     branches: ['*']
   pull_request:
     branches: ['*']
+permissions:
+  contents: read
 jobs:
   build:
     strategy:
