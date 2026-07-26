@@ -9,8 +9,10 @@ DATA         = pgfincore--1.2.2--1.4.sql \
                pgfincore--1.3--1.4.sql \
                pgfincore--1.4.sql \
                pgfincore--1.4--1.5.sql \
+               pgfincore--1.5--1.4.sql
 
-REGRESS      = pgfincore
+REGRESS      = downgrade upgrade \
+               pgfincore
 
 PG_CONFIG    = pg_config
 
