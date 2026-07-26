@@ -1,13 +1,15 @@
 EXTENSION    = pgfincore
-
-MODULES      = $(EXTENSION)
-MODULEDIR    = $(EXTENSION)
+MODULES      = pgfincore
+MODULEDIR    = pgfincore
 DOCS         = README.md
-DATA         = $(EXTENSION)--1.2--1.3.1.sql \
-               $(EXTENSION)--1.3.1--1.4.sql \
-               $(EXTENSION)--1.4.sql
+DATA         = pgfincore--1.2.2--1.4.sql \
+               pgfincore--1.2.3--1.4.sql \
+               pgfincore--1.2.4--1.4.sql \
+               pgfincore--1.3.1--1.4.sql \
+               pgfincore--1.3--1.4.sql \
+               pgfincore--1.4.sql
 
-REGRESS      = $(EXTENSION)
+REGRESS      = pgfincore
 
 PG_CONFIG    = pg_config
 
