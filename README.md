@@ -344,7 +344,7 @@ For example:
 
  * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
 
- * PgFincore needs PostgreSQL >= 8.3
+ * PgFincore needs PostgreSQL >= 10
 
  * PgFincore does not work on windows.
 

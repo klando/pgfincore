@@ -31,12 +31,12 @@
 #include "common/relpath.h" /* relpathbackend */
 
 #ifdef PG_VERSION_NUM
-#define PG_MAJOR_VERSION (PG_VERSION_NUM / 100)
+#define PG_MAJOR_VERSION (PG_VERSION_NUM / 10000)
 #else
 #error "Unknown postgresql version"
 #endif
 
-#if PG_VERSION_NUM < 90300
+#if PG_MAJOR_VERSION < 10
 #error "Unsupported postgresql version"
 #endif
 
@@ -143,10 +143,10 @@ static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
 
-#if PG_MAJOR_VERSION < 1600
+#if PG_MAJOR_VERSION < 16
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#elif PG_MAJOR_VERSION < 1800
+#elif PG_MAJOR_VERSION < 18
 #define relpathpg(rel, forkName) \
         relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
 #else
