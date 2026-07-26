@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 jobs:
-  build:
+  test:
     strategy:
       matrix:
         pg:
@@ -30,6 +30,6 @@ jobs:
       - name: Start PostgreSQL ${{ matrix.pg }}
         run: pg-start ${{ matrix.pg }}
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Test on PostgreSQL ${{ matrix.pg }}
         run: pg-build-test
