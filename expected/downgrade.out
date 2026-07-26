@@ -1,0 +1,29 @@
+CREATE EXTENSION pgfincore VERSION "1.5";
+ALTER EXTENSION pgfincore UPDATE TO "1.4";
+-- those require version "1.5"
+SELECT pg_page_size();
+ERROR:  function pg_page_size() does not exist
+LINE 1: SELECT pg_page_size();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT pg_segment_size();
+ERROR:  function pg_segment_size() does not exist
+LINE 1: SELECT pg_segment_size();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT vm_page_size();
+ERROR:  function vm_page_size() does not exist
+LINE 1: SELECT vm_page_size();
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT FROM vm_physical_pages();
+ERROR:  function vm_physical_pages() does not exist
+LINE 1: SELECT FROM vm_physical_pages();
+                    ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT FROM vm_available_pages();
+ERROR:  function vm_available_pages() does not exist
+LINE 1: SELECT FROM vm_available_pages();
+                    ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DROP EXTENSION pgfincore;

@@ -217,6 +217,26 @@ Executing a snapshot and a restore is very simple:
               OUT group_dirty bigint)
       RETURNS setof record
 
+:: pg_page_size() RETURNS bigint
+
+    Returns PostgreSQL page size in bytes
+
+:: pg_segment_size() RETURNS int
+
+    Returns PostgreSQL segment size in blocks
+
+:: vm_available_pages() RETURNS bigint
+
+    Returns current number of available pages in system memory
+
+:: vm_page_size() RETURNS bigint
+
+    Returns system memory page size in bytes
+
+:: vm_physical_pages() RETURNS bigint
+
+    Returns total number of physical pages in system memory
+
 ## DOCUMENTATION
 
 ### pgsysconf
@@ -338,14 +358,12 @@ For example:
 
 ## REQUIREMENTS
 
- * PgFincore needs mincore() or fincore() and POSIX_FADVISE
+ * PgFincore requires sysconf(), mincore() or fincore(), and POSIX_FADVISE.
+ * PostgreSQL >= 11
 
 ## LIMITATIONS
 
  * PgFincore has a limited mode when POSIX_FADVISE is not provided by the platform.
-
- * PgFincore needs PostgreSQL >= 10
-
  * PgFincore does not work on windows.
 
 ## SEE ALSO
