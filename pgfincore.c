@@ -1131,7 +1131,7 @@ static inline size_t pg_PageSize()
 Datum
 pg_page_size(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT64(pg_PageSize());
+	PG_RETURN_INT64(pg_PageSize());
 }
 
 /* PostgreSQL Segment size */
@@ -1143,7 +1143,7 @@ static inline uint32 pg_SegmentSize()
 Datum
 pg_segment_size(PG_FUNCTION_ARGS)
 {
-        PG_RETURN_UINT32(pg_SegmentSize());
+        PG_RETURN_INT32(pg_SegmentSize());
 }
 
 /*
@@ -1162,7 +1162,7 @@ static inline size_t vm_AvPhysPages()
 Datum
 vm_available_pages(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT64(vm_AvPhysPages());
+	PG_RETURN_INT64(vm_AvPhysPages());
 }
 
 /* System Page size */
@@ -1177,7 +1177,7 @@ static inline size_t vm_PageSize()
 Datum
 vm_page_size(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT64(vm_PageSize());
+	PG_RETURN_INT64(vm_PageSize());
 }
 
 /* System number of physical pages */
@@ -1192,5 +1192,5 @@ static inline size_t vm_PhysPages()
 Datum
 vm_physical_pages(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT64(vm_PhysPages());
+	PG_RETURN_INT64(vm_PhysPages());
 }
