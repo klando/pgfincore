@@ -127,6 +127,91 @@ typedef struct
 	VarBit	*databit;
 } pgfincoreStruct;
 
+/*
+ * PostgreSQL inline functions
+ */
+static inline size_t pg_PageSize(void)
+{
+	return BLCKSZ;
+}
+
+PG_FUNCTION_INFO_V1(pg_page_size);
+Datum
+pg_page_size(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(pg_PageSize());
+}
+
+static inline uint32 pg_SegmentSize(void)
+{
+	return RELSEG_SIZE;
+}
+
+PG_FUNCTION_INFO_V1(pg_segment_size);
+Datum
+pg_segment_size(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT32(pg_SegmentSize());
+}
+
+/*
+ * sysconf inline functions
+ */
+static size_t	_sc_pagesize	= 0;
+static size_t	_sc_phys_pages	= 0;
+
+static inline size_t vm_PageSize(void)
+{
+	if (_sc_pagesize == 0)
+		_sc_pagesize = sysconf(_SC_PAGESIZE);
+	return _sc_pagesize;
+}
+
+static inline size_t vm_AvPhysPages(void)
+{
+	return (size_t) sysconf(_SC_AVPHYS_PAGES);
+}
+
+static inline size_t vm_PhysPages(void)
+{
+	if (_sc_phys_pages == 0)
+		_sc_phys_pages = sysconf(_SC_PHYS_PAGES);
+	return _sc_phys_pages;
+}
+
+PG_FUNCTION_INFO_V1(vm_page_size);
+Datum
+vm_page_size(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_PageSize());
+}
+
+PG_FUNCTION_INFO_V1(vm_available_pages);
+Datum
+vm_available_pages(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_AvPhysPages());
+}
+
+PG_FUNCTION_INFO_V1(vm_physical_pages);
+Datum
+vm_physical_pages(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_UINT64(vm_PhysPages());
+}
+
+#if PG_MAJOR_VERSION < 16
+#define relpathpg(rel, forkName) \
+        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
+#elif PG_MAJOR_VERSION < 18
+#define relpathpg(rel, forkName) \
+        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
+#else
+/* PG 18+: relpathbackend() returns RelPathStr; pstrdup .str to get a palloc'd char * */
+#define relpathpg(rel, forkName) \
+        pstrdup(relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str)
+#endif
+
 Datum pgsysconf(PG_FUNCTION_ARGS);
 
 Datum 		pgfadvise(PG_FUNCTION_ARGS);
@@ -142,18 +227,6 @@ Datum		pgfincore(PG_FUNCTION_ARGS);
 static int	pgfincore_file(char *filename, pgfincoreStruct *pgfncr);
 
 Datum		pgfincore_drawer(PG_FUNCTION_ARGS);
-
-#if PG_MAJOR_VERSION < 16
-#define relpathpg(rel, forkName) \
-        relpathbackend((rel)->rd_node, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#elif PG_MAJOR_VERSION < 18
-#define relpathpg(rel, forkName) \
-        relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName))))
-#else
-/* PG 18+: relpathbackend() returns RelPathStr; pstrdup .str to get a palloc'd char * */
-#define relpathpg(rel, forkName) \
-        pstrdup(relpathbackend((rel)->rd_locator, (rel)->rd_backend, (forkname_to_number(text_to_cstring(forkName)))).str)
-#endif
 
 /*
  * pgsysconf
@@ -180,13 +253,13 @@ pgsysconf(PG_FUNCTION_ARGS)
 		elog(ERROR, "pgsysconf: return type must be a row type");
 
 	/* Page size */
-	values[0] = Int64GetDatum(sysconf(_SC_PAGESIZE));
+	values[0] = Int64GetDatum(vm_PageSize());
 
 	/* free page in memory */
-	values[1] = Int64GetDatum(sysconf(_SC_AVPHYS_PAGES));
+	values[1] = Int64GetDatum(vm_AvPhysPages());
 
 	/* total memory */
-	values[2] = Int64GetDatum(sysconf(_SC_PHYS_PAGES));
+	values[2] = Int64GetDatum(vm_PhysPages());
 
 	/* Build and return the result tuple. */
 	tuple = heap_form_tuple(tupdesc, values, nulls);
@@ -213,7 +286,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 	/*
 	 * OS Page size and Free pages
 	 */
-	pgfdv->pageSize	= sysconf(_SC_PAGESIZE);
+	pgfdv->pageSize	= vm_PageSize();
 
 	/*
 	 * Fopen and fstat file
@@ -291,7 +364,7 @@ pgfadvise_file(char *filename, int advice, pgfadviseStruct *pgfdv)
 	/*
 	 * OS things : Pages free
 	 */
-	pgfdv->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+	pgfdv->pagesFree = vm_AvPhysPages();
 
 	return 0;
 }
@@ -476,7 +549,7 @@ pgfadvise_loader_file(char *filename,
 	/*
 	 * OS things : Page size
 	 */
-	pgfloader->pageSize = sysconf(_SC_PAGESIZE);
+	pgfloader->pageSize = vm_PageSize();
 
 	/*
 	 * we count the action we perform
@@ -572,7 +645,7 @@ pgfadvise_loader_file(char *filename,
 	/*
 	 * OS things : Pages free
 	 */
-	pgfloader->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+	pgfloader->pagesFree = vm_AvPhysPages();
 
 	return 0;
 }
@@ -721,7 +794,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	/*
 	 * OS Page size
 	 */
-	pgfncr->pageSize  = sysconf(_SC_PAGESIZE);
+	pgfncr->pageSize  = vm_PageSize();
 
 	/*
 	 * Initialize counters
@@ -879,7 +952,7 @@ pgfincore_file(char *filename, pgfincoreStruct *pgfncr)
 	/*
 	 * OS things : Pages free
 	 */
-	pgfncr->pagesFree = sysconf(_SC_AVPHYS_PAGES);
+	pgfncr->pagesFree = vm_AvPhysPages();
 
 	return 0;
 }
@@ -1114,83 +1187,4 @@ pgfincore_drawer(PG_FUNCTION_ARGS)
 
 	*r = '\0';
 	PG_RETURN_CSTRING(result);
-}
-
-/*
- * PostgreSQL informations
- */
-PG_FUNCTION_INFO_V1(pg_page_size);
-PG_FUNCTION_INFO_V1(pg_segment_size);
-
-/* PostgreSQL Page size */
-static inline size_t pg_PageSize()
-{
-        return BLCKSZ;
-}
-
-Datum
-pg_page_size(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_UINT64(pg_PageSize());
-}
-
-/* PostgreSQL Segment size */
-static inline uint32 pg_SegmentSize()
-{
-	return RELSEG_SIZE;
-}
-
-Datum
-pg_segment_size(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_UINT32(pg_SegmentSize());
-}
-
-/*
- * sysconf informations
- */
-PG_FUNCTION_INFO_V1(vm_available_pages);
-PG_FUNCTION_INFO_V1(vm_page_size);
-PG_FUNCTION_INFO_V1(vm_physical_pages);
-
-/* System number of available pages */
-static inline size_t vm_AvPhysPages()
-{
-	return (size_t) sysconf(_SC_AVPHYS_PAGES);
-}
-
-Datum
-vm_available_pages(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_UINT64(vm_AvPhysPages());
-}
-
-/* System Page size */
-static size_t     _sc_pagesize    = 0;
-static inline size_t vm_PageSize()
-{
-	if (_sc_pagesize == 0)
-		_sc_pagesize = sysconf(_SC_PAGESIZE);
-	return ((size_t) _sc_pagesize);
-}
-
-Datum
-vm_page_size(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_UINT64(vm_PageSize());
-}
-
-/* System number of physical pages */
-static size_t 		_sc_phys_pages  = 0;
-static inline size_t vm_PhysPages()
-{
-	if (_sc_phys_pages == 0)
-		_sc_phys_pages = sysconf(_SC_PHYS_PAGES);
-	return _sc_phys_pages;
-}
-
-Datum
-vm_physical_pages(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_UINT64(vm_PhysPages());
 }
